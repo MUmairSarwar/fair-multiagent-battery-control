@@ -118,16 +118,16 @@ def fig_net_benefit(df, base):
     for yi, s in zip(y, seeds):
         if s is not None:
             ax.plot(s, [yi] * len(s), "o", ms=4, mfc="white", mec=INK, mew=0.8, zorder=3)
-    for yi, v in zip(y, vals):
-        ax.text(v + (6 if v >= 0 else -6), yi, f"{v:.0f}", va="center",
-                ha="left" if v >= 0 else "right", color=INK, fontsize=9)
+    for yi, v, e, s in zip(y, vals, errs, seeds):
+        right = max([v + e] + ([] if s is None else list(s)))
+        x = right + 8 if v >= 0 else v - 8
+        ax.text(x, yi, f"{v:.0f}", va="center", ha="left" if v >= 0 else "right", color=INK, fontsize=9)
     ax.axvline(0, color=MUTED, lw=0.8)
     ax.set_yticks(y, [LABEL[n] for n in names])
     ax.set_xlabel("Net benefit on 51 test days (EUR) = cost saved − 0.5 EUR × overload kWh")
-    ax.set_title("Net benefit compared with no battery (bars: mean of 3 seeds, dots: single seeds)",
+    ax.set_title("Net benefit vs. no battery (bars: mean of 3 seeds, dots: each seed)",
                  fontsize=10, loc="left", color=INK)
-    lo = min(vals) - 60
-    ax.set_xlim(lo, max(vals) + 40)
+    ax.set_xlim(min(vals) - 70, max(vals) + 45)
     ax.grid(axis="y", visible=False)
     fig.tight_layout()
     fig.savefig(FIG / "net_benefit.png")
@@ -140,7 +140,7 @@ def fig_example_day(base, details):
     spread = price.max(1) - price.min(1)
     day = int(np.argmax(spread))
     t = np.arange(96) / 4
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(7.2, 5.0), sharex=True,
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(7.2, 5.6), sharex=True,
                                  gridspec_kw={"height_ratios": [1, 2.2]})
     a1.step(t, price[day], where="post", color=MUTED, lw=1.5)
     a1.set_ylabel("Price (EUR/MWh)")
@@ -160,7 +160,7 @@ def fig_example_day(base, details):
     a2.set_ylabel("Total load (kW)")
     a2.set_xlabel("Hour of day (local time)")
     a2.set_xticks(range(0, 25, 3))
-    a2.legend(frameon=False, fontsize=8.5, ncol=2, loc="upper right")
+    a2.legend(frameon=False, fontsize=8.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.2))
     fig.tight_layout()
     fig.savefig(FIG / "example_day.png")
     plt.close(fig)

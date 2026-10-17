@@ -1,0 +1,6 @@
+{
+  "baseline_energy_cost_eur": 315.72,
+  "lp_simultaneous_charge_discharge_steps": 212,
+  "n_test_days": 51,
+  "n_test_steps": 4896
+}

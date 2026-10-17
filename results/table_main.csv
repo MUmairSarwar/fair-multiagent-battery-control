@@ -1,0 +1,7 @@
+Method,Seeds,Energy cost saved (EUR),Overload steps,Overload energy (kWh),Net benefit (EUR),Share of LP benefit (%),Peak load (kW),Mean daily peak (kW),Jain index
+No battery,-,0.00,0,0.0,0.00,0.0,6.42,4.35,n/a
+Price rule,-,92.40,293,938.5,-376.84,-285.4,26.96,25.25,0.969
+LP optimum (perfect foresight),-,132.06,0,0.0,132.06,100.0,11.00,11.00,0.969
+Independent Q-learning,3,72.69 ± 6.16,68 ± 20,18.1 ± 6.2,63.65 ± 9.08,48.2 ± 6.9,15.72 ± 1.75,11.98 ± 0.34,0.974 ± 0.026
+Independent PPO,3,118.95 ± 1.77,233 ± 45,57.9 ± 4.5,90.01 ± 1.19,68.2 ± 0.9,14.99 ± 0.17,12.21 ± 0.07,0.965 ± 0.007
+MAPPO,3,120.90 ± 0.44,303 ± 23,66.5 ± 7.9,87.66 ± 3.62,66.4 ± 2.7,15.04 ± 0.00,12.24 ± 0.22,0.967 ± 0.002
