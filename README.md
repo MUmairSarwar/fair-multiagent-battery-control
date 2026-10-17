@@ -1,6 +1,8 @@
 # Fair multi-agent control of home batteries in a German neighbourhood
 
-**Project period: May 2026 – October 2026**
+**Project period: May 2026 – October 2026.** I built it on my laptop and
+pushed it to GitHub in October 2026, so the commit history here is short.
+The steps are listed under [How the project developed](#how-the-project-developed).
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -273,6 +275,25 @@ tests/              pytest: data, PettingZoo API, battery physics, LP, metrics, 
 data/               raw price file, processed inputs, data notes
 results/            per-run JSON, tables (CSV/Markdown) and figures
 ```
+
+## How the project developed
+
+I started in May 2026 and worked on it alongside other things until October.
+Roughly in this order:
+
+1. **Data.** Getting the 2025 day-ahead prices, checking them against SMARD,
+   and handling the switch from hourly to 15-minute prices on 1 Oct 2025.
+   Building the household loads from the H0 profile.
+2. **Environment.** Writing the PettingZoo environment and the battery
+   physics, then the batched numpy version once training got too slow.
+3. **Baselines.** The price rule and the LP. The LP came early on purpose, so
+   that every later result had a fixed target to compare against.
+4. **Learning agents.** Tabular Q-learning first, then independent PPO, then
+   MAPPO. This was my first RL project, so most of the time went here.
+5. **Experiments.** The fairness reward, the 1-bit messages and switching the
+   overload price off. Three seeds each, 36 runs in total.
+6. **Write-up.** Tables, figures, tests, CI and this README. Then publishing
+   it in October.
 
 ## Background
 
