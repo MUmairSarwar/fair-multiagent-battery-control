@@ -1,5 +1,7 @@
 # Fair multi-agent control of home batteries in a German neighbourhood
 
+**Project period: May 2026 – October 2026**
+
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
