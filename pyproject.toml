@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fairbattery"
+version = "0.1.0"
+description = "Fair multi-agent control of home batteries behind a shared transformer"
+authors = [{ name = "Muhammad Umair Sarwar" }]
+license = { text = "MIT" }
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+filterwarnings = ["ignore::FutureWarning", "ignore::DeprecationWarning"]
