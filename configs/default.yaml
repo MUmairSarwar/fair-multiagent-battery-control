@@ -1,0 +1,37 @@
+# Default settings. Every experiment starts from these and changes only what
+# its variant lists in configs/experiments.yaml.
+
+env:
+  annual_kwh: [2500, 3000, 3500, 4000, 4500, 5000]   # yearly use of each household
+  capacity_kwh: [5.0, 10.0, 7.5, 5.0, 10.0, 7.5]     # home battery sizes
+  c_rate: 0.5               # max charge/discharge power = 0.5 * capacity
+  efficiency: 0.95          # one-way, about 90% round trip
+  soc_init: 0.5             # every day starts half full
+  transformer_kw: 11.0      # share of the local transformer for these 6 homes (assumption)
+  overload_penalty: 0.5     # EUR per kWh above the limit (assumption)
+  load_noise_sigma: 0.15    # random variation on the H0 profile
+  fairness_weight: 0.0
+  price_incentive: true
+  communication: false
+  reward_scale: 10.0
+
+eval:
+  load_seed: 2025           # the same noisy test loads for every method
+
+train:
+  seeds: [0, 1, 2]
+  batch_days: 16            # days simulated side by side in one iteration
+  iql:
+    iterations: 400
+    alpha: 0.1
+    gamma: 0.99
+  ppo:
+    iterations: 250
+    lr: 0.0003
+    gamma: 0.99
+    lam: 0.95
+    clip: 0.2
+    epochs: 4
+    minibatches: 4
+    ent_coef: 0.01
+    hidden: 64

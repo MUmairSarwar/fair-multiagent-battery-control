@@ -1,0 +1,13 @@
+# Each variant is trained with every algorithm and every seed in default.yaml.
+# "main" is the default setting used for the main results table.
+
+variants:
+  main: {}
+  fairness:
+    fairness_weight: 2.0
+  no_incentive:
+    price_incentive: false
+  communication:
+    communication: true
+
+algorithms: [iql, ippo, mappo]
