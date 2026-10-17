@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install (CPU-only PyTorch keeps the job small)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+      - name: Rebuild processed data and check it is unchanged
+        run: |
+          python scripts/prepare_data.py
+          git diff --exit-code data/processed
+      - name: Tests
+        run: python -m pytest -q
+      - name: Short end-to-end run
+        run: python scripts/run_experiments.py --quick
