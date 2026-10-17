@@ -22,11 +22,11 @@ train:
   seeds: [0, 1, 2]
   batch_days: 16            # days simulated side by side in one iteration
   iql:
-    iterations: 400
+    iterations: 2000
     alpha: 0.1
     gamma: 0.99
   ppo:
-    iterations: 250
+    iterations: 400
     lr: 0.0003
     gamma: 0.99
     lam: 0.95
