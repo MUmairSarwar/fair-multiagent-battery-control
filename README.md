@@ -22,6 +22,16 @@ for every result.
 
 ![Net benefit of each method](results/figures/net_benefit.png)
 
+
+## Data period and version history
+
+- **Observation period:** 2025 DE-LU electricity prices. Household demand is generated from the BDEW H0 profile with noise, rather than measured household records.
+- **3 October 2026:** the price snapshot used by the current version was created in the German Energy Operations project.
+- **17 October 2026:** the price series was checked against SMARD, and the battery-control code, experiments and reports were committed. See [data/README.md](data/README.md).
+- **Earlier development:** the May–October project period describes the broader development period. The current snapshot, validation and published results belong to the October phase.
+
+The October data snapshot should not be presented as having been available during the earlier local development phase.
+
 ## Main findings
 
 All numbers are for 51 held-out test days of 2025, with 3 training seeds for
