@@ -3,6 +3,9 @@
 **Project period: May 2026 – October 2026.** I built it on my laptop and
 pushed it to GitHub in October 2026, so the commit history here is short.
 The steps are listed under [How the project developed](#how-the-project-developed).
+A [distributed-optimisation part](#distributed-optimisation-added-november-2026)
+(dual decomposition, ADMM, fairness) was added in November 2026 with AI
+assistance.
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -219,6 +222,95 @@ Q-learning was still improving when training stopped. With a longer run it
 would probably do better, so its numbers should be read as "after 32,000
 training days", not as the limit of the method.
 
+## Distributed optimisation (added November 2026)
+
+The LP above is centralised: one solver sees every household's load and
+battery. A real neighbourhood would rather let each household decide for
+itself, with only a little coordination. The problem has the right shape for
+that: each household's cost and constraints are its own, and only the
+transformer limit couples them. So the same problem was also solved with two
+classic distributed methods ([src/fairbattery/distributed/](src/fairbattery/distributed/),
+derivations in [docs/theory.md](docs/theory.md)):
+
+- **Dual decomposition.** The coordinator publishes a *congestion price* per
+  quarter-hour (the dual variable of the transformer limit). Each household
+  solves its own small LP with that extra price and reports its plan. The
+  price rises where the transformer is overloaded (projected subgradient
+  steps), and the averaged plans are reported.
+- **ADMM for the sharing problem** (Boyd et al. 2011, §7.3). Each household
+  solves a small QP; the coordinator's step has a closed form.
+
+In both, a household only receives 96 numbers per round and sends 96 back.
+It never shares its load or battery data.
+
+Same 51 test days and loads as the main results:
+
+| Method | Net benefit (EUR) | Share of LP (%) | Overload (kWh, 51 days) | Days within 1% of the LP |
+|---|---:|---:|---:|---:|
+| Centralised LP (published bound) | 132.06 | 100.00 | 0.00 | – |
+| Exact MILP (no simultaneous charge/discharge) | 132.05 | 100.00 | 0.00 | – |
+| Dual decomposition, 300 rounds | 131.28 | 99.42 | 0.72 | 44 / 51 |
+| ADMM, rho = 0.5 | 132.05 | 99.99 | 0.01 | 51 / 51 |
+
+![Convergence on one day](results/distributed/figures/convergence.png)
+
+- **ADMM reaches the centralised optimum** on every test day. It needs a
+  median of 21 rounds to get within 1%. Dual decomposition needs a median of
+  about 130 rounds and misses 1% on 7 days in 300 rounds. That is the
+  expected behaviour of a subgradient method on an LP: the household plans
+  jump between corners, so only their average settles.
+- **Exact MILP vs LP.** On the 3 test days where the LP charges and discharges
+  at once, forbidding it lowers the total benefit by EUR 0.002. The LP bound
+  used for the RL results is therefore essentially exact.
+
+### Putting fairness into the algorithm
+
+With a hard transformer limit, the transformer capacity was shared under
+three rules. Each compares households by saving per kWh of battery:
+*efficient* (largest total saving), *proportional fairness*
+(sum of log savings, Kelly 1998) and *max-min fairness* (raise the worst-off
+household first). Proportional fairness keeps the problem separable, so it
+also runs inside ADMM: only each household's local objective changes.
+
+| Allocation | Total saving (EUR) | Price of fairness (%) | Jain index | Lowest saving per kWh (EUR) | Highest (EUR) |
+|---|---:|---:|---:|---:|---:|
+| Efficient | 132.06 | 0.00 | 0.974 | 2.27 | 3.81 |
+| Proportional fairness | 132.03 | 0.02 | 0.994 | 2.59 | 3.35 |
+| Max-min fairness (per day) | 118.20 | 10.49 | 1.000 | 2.62 | 2.63 |
+| Proportional fairness, distributed (ADMM) | 132.03 | 0.02 | 0.994 | 2.59 | 3.35 |
+
+![Who gets the savings](results/distributed/figures/fairness.png)
+
+- **Proportional fairness is almost free here.** It costs 0.02% of the total
+  but raises the worst-off household (H2, the 10 kWh battery) by 14%. The
+  efficient optimum is not unique: many schedules give the same total, and
+  they share it differently. That is also why its Jain index (0.974) differs
+  slightly from the main LP table (0.969). Proportional fairness picks a fair
+  one among nearly equally good schedules.
+- **Max-min fairness is expensive.** Equalising everyone exactly costs 10.5%
+  of the total saving. It does so mostly by holding back H4 and H6, the
+  households that gain most per kWh of battery.
+- **The distributed version matches the centralised one** (largest
+  transformer violation 0.001 kWh).
+
+### Scaling
+
+The six household types were copied to 24 and 96 synthetic households, with
+the transformer limit scaled in proportion (2 days each).
+
+![Scaling](results/distributed/figures/scaling.png)
+
+- ADMM needed about **60 rounds to reach 1% for 6, 24 and 96 households
+  alike**, at about 4 ms per household solve.
+- Dual decomposition, with the step size tuned for 6 households, was still
+  5–11% from the optimum after 300 rounds for 24 and 96. Its step should
+  shrink as the number of households grows. That was not re-tuned, so this
+  comparison favours ADMM.
+
+What this part does **not** show yet: forecast errors, a network model with
+voltages, communication delays, or a proof beyond the standard theorems it
+relies on. Those are listed in [docs/theory.md](docs/theory.md#6-limitations).
+
 ## Limitations
 
 - **Only the wholesale part of the bill.** Households pay the day-ahead price
@@ -239,8 +331,11 @@ training days", not as the limit of the method.
   before.
 - **The LP has a few small advantages.** It uses continuous power instead of
   5 levels. In 212 of 29,376 household-steps it charges and discharges at the
-  same time, which only pays off when prices are negative. Its score is
-  therefore a slightly generous upper bound.
+  same time, which only pays off when prices are zero or negative and the
+  battery is full. Its score is therefore a slightly generous upper bound. An
+  exact mixed-integer version that forbids this (`solve_day_lp(...,
+  exclusive=True)`) changes the 51-day benefit by less than one cent; see
+  [docs/theory.md](docs/theory.md#5-the-lp-relaxation-artefact).
 - **End-of-day valuation.** Stored energy left at midnight is valued at the
   day's average price. This is why the LP sometimes charges late in the
   evening.
@@ -272,6 +367,13 @@ python -m pytest -q
 python scripts/run_experiments.py --quick
 ```
 
+The distributed-optimisation results (about 40 minutes on 2 cores):
+
+```bash
+python scripts/run_distributed.py           # writes results/distributed/
+python scripts/run_distributed.py --quick --out /tmp/distributed   # short check
+```
+
 Settings are in [configs/default.yaml](configs/default.yaml) and
 [configs/experiments.yaml](configs/experiments.yaml).
 
@@ -279,8 +381,10 @@ Settings are in [configs/default.yaml](configs/default.yaml) and
 
 ```text
 src/fairbattery/    data loading, environment, baselines, agents, metrics, experiment runner
+src/fairbattery/distributed/   dual decomposition, ADMM, fairness objectives, centralised references
+docs/theory.md      derivations behind the distributed algorithms
 configs/            default settings and the experiment variants
-scripts/            prepare_data.py, run_experiments.py, make_report.py, reproduce.py
+scripts/            prepare_data.py, run_experiments.py, make_report.py, reproduce.py, run_distributed.py
 tests/              pytest: data, PettingZoo API, battery physics, LP, metrics, agents
 data/               raw price file, processed inputs, data notes
 results/            per-run JSON, tables (CSV/Markdown) and figures
@@ -304,6 +408,10 @@ Roughly in this order:
    overload price off. Three seeds each, 36 runs in total.
 6. **Write-up.** Tables, figures, tests, CI and this README. Then publishing
    it in October.
+7. **Distributed optimisation (November 2026).** Dual decomposition, ADMM
+   and fairness objectives on the same problem, plus the exact MILP check of
+   the LP. This part was built with AI assistance (Claude); the derivations
+   are in [docs/theory.md](docs/theory.md).
 
 ## Background
 

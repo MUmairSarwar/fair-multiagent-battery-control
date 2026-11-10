@@ -1,0 +1,5 @@
+Allocation,Total saving (EUR),Price of fairness (%),Jain index,Lowest saving per kWh of battery (EUR),Highest saving per kWh of battery (EUR)
+Efficient (max total saving),132.06,0.0,0.9741,2.269,3.808
+Proportional fairness,132.03,0.02,0.9939,2.594,3.348
+Max-min fairness,118.2,10.49,1.0,2.624,2.631
+"Proportional fairness, distributed (ADMM)",132.03,0.02,0.9938,2.592,3.352

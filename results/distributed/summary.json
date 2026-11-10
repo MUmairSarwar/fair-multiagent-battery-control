@@ -1,0 +1,13 @@
+{
+  "test_days": 51,
+  "iterations": 300,
+  "dual_step0": 0.02,
+  "admm_rho": 0.5,
+  "days_lp_charges_and_discharges_at_once": 3,
+  "milp_minus_lp_benefit_eur": -0.0019,
+  "dual_days_reaching_1pct": 44,
+  "admm_days_reaching_1pct": 51,
+  "admm_median_iters_to_1pct": 21.0,
+  "dual_median_iters_to_1pct": 132.5,
+  "admm_proportional_max_violation_kwh": 0.001214234432666661
+}

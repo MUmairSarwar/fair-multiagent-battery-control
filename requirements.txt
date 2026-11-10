@@ -8,3 +8,5 @@ gymnasium>=1.0
 pettingzoo>=1.25
 demandlib==0.2.2
 pytest>=8.0
+cvxpy>=1.5
+tabulate>=0.9
