@@ -27,3 +27,5 @@ jobs:
         run: python -m pytest -q
       - name: Short end-to-end run
         run: python scripts/run_experiments.py --quick
+      - name: Short distributed-optimisation run
+        run: python scripts/run_distributed.py --quick --out /tmp/distributed
