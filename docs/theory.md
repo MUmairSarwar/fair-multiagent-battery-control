@@ -1,7 +1,7 @@
 # Theory notes: distributed and fair scheduling behind a shared transformer
 
-*Written with AI assistance as part of this learning project. The results it
-refers to are in [`results/distributed/`](../results/distributed/).*
+*The results these notes refer to are in
+[`results/distributed/`](../results/distributed/).*
 
 ## 1. The problem and its structure
 
