@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.optimize import linprog
 
 from .data import DT_HOURS, STEPS_PER_DAY
 from .env import IDLE_ACTION, BatteryCommunity
@@ -35,10 +34,11 @@ class PriceRulePolicy:
         return np.repeat(a[:, None], env.n, axis=1)
 
 
-def solve_day_lp(env: BatteryCommunity, b: int):
-    """Optimal schedule for day `b` of the current batch, knowing all prices and
-    loads in advance. It maximises the same system benefit the other methods
-    are scored on: total saving minus the overload penalty.
+def _build_day_lp(env: BatteryCommunity, b: int):
+    """Build the original LP coefficients for day `b` of the current batch.
+
+    Objective: negative total saving plus overload penalty, with perfect
+    knowledge of the day's prices and loads.
 
     Variables per household and step: c (kWh drawn from the grid to charge)
     and d (kWh delivered from the battery to the house). Plus one overload
@@ -103,23 +103,45 @@ def solve_day_lp(env: BatteryCommunity, b: int):
         b_ub.append(cfg.transformer_kw * DT_HOURS - load[:, t].sum())
         r += 1
     A = sp.csr_matrix((vals, (rows, cols)), shape=(r, nv))
-    res = linprog(cost, A_ub=A, b_ub=np.array(b_ub), bounds=bounds, method="highs")
-    if res.status != 0:
-        raise RuntimeError(f"LP failed: {res.message}")
-    x = res.x
-    c = x[: n * T].reshape(n, T)
-    d = x[n * T : 2 * n * T].reshape(n, T)
-    return c, d
+    return cost, A, np.asarray(b_ub), bounds
 
 
-def run_lp(env: BatteryCommunity):
-    """Solve the LP for every day in the batch and replay it through the same
-    accounting as the environment. Returns per-step info like `rollout`."""
+def solve_day_lp(env: BatteryCommunity, b: int, *, throughput_cost: float = 0.0):
+    """Continuous relaxation; a fee discourages but need not prevent cycling.
+
+    throughput_cost is EUR per AC-side kWh charged plus discharged.
+    Use solve_day_milp when mutually exclusive modes must be guaranteed.
+    """
+    from .distributed.centralised import solve_day
+
+    result = solve_day(env, b, throughput_cost=throughput_cost)
+    return result.charge, result.discharge
+
+
+def solve_day_milp(env: BatteryCommunity, b: int):
+    """Physical continuous-power baseline with binary charge/discharge modes."""
+    from .distributed.centralised import solve_day
+
+    result = solve_day(env, b, exclusive=True)
+    return result.charge, result.discharge
+
+
+def run_lp(env: BatteryCommunity, *, throughput_cost: float = 0.0, exclusive: bool = False):
+    """Solve each day and replay the original environment accounting.
+
+    Default retains the legacy relaxed LP for reproducibility. exclusive=True
+    selects the physically exclusive MILP. Savings do NOT subtract a modelling
+    throughput fee; that fee and the optimized objective are returned separately.
+    """
+    from .distributed.centralised import solve_day
     B, n, T = env.B, env.n, STEPS_PER_DAY
     charge = np.zeros((B, n, T))
     discharge = np.zeros((B, n, T))
+    solutions = []
     for b in range(B):
-        charge[b], discharge[b] = solve_day_lp(env, b)
+        result = solve_day(env, b, throughput_cost=throughput_cost, exclusive=exclusive)
+        charge[b], discharge[b] = result.charge, result.discharge
+        solutions.append(result)
     eta = env.eta
     e0 = env.cfg.soc_init * env.cap
     flow = charge * eta - discharge / eta
@@ -132,8 +154,36 @@ def run_lp(env: BatteryCommunity):
     both = ((charge > 1e-6) & (discharge > 1e-6)).sum()
     return {
         "saving": saving,
+        "charge_kwh": charge,
+        "discharge_kwh": discharge,
+        "energy_kwh": energy,
+        "objective_eur": np.array([r.objective for r in solutions]),
+        "throughput_fee_eur": np.array([r.throughput_fee for r in solutions]),
+        "solver_seconds": np.array([r.solve_seconds for r in solutions]),
+        "mip_gaps": np.array([r.mip_gap for r in solutions]),
         "total_kw": total_kw,
         "overload_kwh": overload,
         "grid_kwh": grid,
         "simultaneous_charge_discharge_steps": int(both),
     }
+
+
+def run_milp(env: BatteryCommunity):
+    """Evaluate the exclusive-mode baseline using the unchanged economic score."""
+    return run_lp(env, exclusive=True)
+
+
+def run_corrected_lp(env: BatteryCommunity):
+    """Cycle-free penalized LP for this model; original scores remain separate.
+
+    Uses one sufficient EUR/kWh fee over the entire current batch. This is a
+    changed objective, not the unpenalized exclusive MILP optimum.
+    """
+    from .distributed.centralised import sufficient_throughput_cost
+
+    fee = sufficient_throughput_cost(env.price, env.eta)
+    result = run_lp(env, throughput_cost=fee)
+    if result['simultaneous_charge_discharge_steps']:
+        raise RuntimeError('Unexpected cycling in sufficient-fee LP')
+    result['throughput_cost_eur_per_kwh'] = fee
+    return result

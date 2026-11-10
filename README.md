@@ -239,8 +239,10 @@ training days", not as the limit of the method.
   before.
 - **The LP has a few small advantages.** It uses continuous power instead of
   5 levels. In 212 of 29,376 household-steps it charges and discharges at the
-  same time, which only pays off when prices are negative. Its score is
-  therefore a slightly generous upper bound.
+  same time (208 at negative prices and 4 at zero prices in the Stage 0 audit).
+  Its score is therefore a slightly generous upper bound. See the new
+  Distributed optimization section for cycle-free references; the original
+  MARL tables above retain their historical LP comparison.
 - **End-of-day valuation.** Stored energy left at midnight is valued at the
   day's average price. This is why the LP sometimes charges late in the
   evening.
@@ -322,3 +324,91 @@ H0 via demandlib (MIT).
 
 Author: [Muhammad Umair Sarwar](https://github.com/MUmairSarwar) ·
 [LinkedIn](https://www.linkedin.com/in/muhammad-umair-sarwar/)
+
+
+## Distributed optimization
+
+This extension is being built as a step-by-step learning project with AI
+assistance. Mathematical notes are in [docs/theory.md](docs/theory.md).
+They are currently an **AI-assisted study draft for the author to verify and
+rewrite**, not yet independently authored derivations. The final authorship
+statement will be updated after that work is completed.
+
+### Stage 0: remove simultaneous battery charging and discharging
+
+Implemented in `src/fairbattery/distributed/centralised.py`, with compatibility
+entry points in `src/fairbattery/baselines.py`:
+
+- `run_lp(env)`: original continuous relaxation, retained to reproduce the
+  published MARL comparison. It permits simultaneous operation.
+- `run_corrected_lp(env)`: adds a mathematically sufficient throughput fee
+  computed over the current batch, and checks that no cycles remain. This is
+  the proposed convex reference for the later distributed LP algorithms.
+- `run_milp(env)`: enforces exclusive operating modes with binary variables,
+  retaining the original economic objective. This is a physical reference,
+  **not** an LP to which standard convex strong-duality guarantees apply.
+
+A small arbitrary fee is not enough at all negative prices. The sufficient
+fee here is `max(0, -min(price)) * (1-eta**2)/(1+eta**2) + 1e-6` EUR per kWh
+charged plus discharged. It is a modelling penalty, not a calibrated battery
+wear cost. The proof and its assumptions are in the theory notes.
+
+All variants retain the existing **soft** 11 kW transformer penalty, the daily
+half-full initial SOC and the terminal stored-energy valuation. A hard limit
+will be a separate explicit modelling decision before Stage 1.
+
+Reproduce from the repository root (Python and existing dependencies installed):
+
+```bash
+python scripts/audit_stage0.py --include-milp
+python -m pytest tests/test_baselines.py tests/test_distributed_stage0.py tests/test_data.py tests/test_metrics.py tests/test_env.py -q
+```
+
+For a quicker LP-only comparison, omit `--include-milp`. Neither command
+re-trains or changes the MARL agents. The script regenerates both Stage 0
+figures, schedules (`.npz`), a comparison CSV and a JSON with seed, data/config
+hashes, dates, software versions and solver gaps, under
+`results/distributed/stage0/`.
+
+The optional MILP uses a relative gap of `1e-5` and a 60-second per-day limit;
+a time-limited or otherwise unsuccessful solve raises. Tightening this to
+`1e-9` timed out on one negative-price day in this environment. Runtime depends
+on the machine and solver version. Mode exclusivity is checked at `1e-6` kWh.
+
+The LP fee changes the optimized objective. Therefore `net_benefit_eur` always
+reports the **original** economic score without the throughput fee, and
+`objective_eur` separately reports minimized cost **including** that fee.
+The original cost is negative net benefit. No penalized objective is compared
+to an unpenalized objective as though they were the same problem.
+
+All figures below use the same 51 held-out days and seed 2025. Counts are
+household-steps (29,376 in total), using a 1e-6 kWh overlap threshold.
+
+| Model | Fee (EUR/kWh throughput) | Simultaneous household-steps | Original net benefit (EUR) | Loss vs relaxed LP (EUR) |
+|---|---:|---:|---:|---:|
+| original_lp | 0.000000000 | 212 | 132.055004 | 0.000000 |
+| small_fee_lp | 0.000100000 | 12 | 132.050951 | 0.004053 |
+| sufficient_fee_lp | 0.001631723 | 0 | 131.928555 | 0.126449 |
+| exclusive_milp | 0.000000000 | 0 | 132.053306 | 0.001698 |
+
+All four schedules have zero transformer overload within numerical tolerance.
+MILP values are certified to the recorded relative MIP gap (at most 1e-5),
+not exact arithmetic optimality. The MILP still allows continuous power.
+The sufficient fee eliminates cycling but also discourages useful arbitrage;
+this explains its larger economic-benefit reduction.
+
+The original 212 cycling cases are 208 negative-price and 4 zero-price
+household-steps. These are not 212 distinct clock intervals.
+
+![Stage 0 comparison](results/distributed/stage0/stage0_comparison.png)
+![A household on a day with negative prices](results/distributed/stage0/stage0_example.png)
+
+### Later stages (not implemented yet)
+
+1. Dual decomposition and primal averaging for a clearly specified convex LP.
+2. Sharing-form ADMM, local solves, residuals and penalty sensitivity.
+3. Proportional and max-min fairness, with an explicit savings baseline/domain.
+4. Reproducible scaling to 6, 100 and 1000 synthetic households.
+
+We pause after Stage 0 for the author to review the model, code and results.
+No distributed-solver convergence claims are made by this stage.
