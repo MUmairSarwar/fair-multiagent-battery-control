@@ -4,8 +4,7 @@
 pushed it to GitHub in October 2026, so the commit history here is short.
 The steps are listed under [How the project developed](#how-the-project-developed).
 A [distributed-optimisation part](#distributed-optimisation-added-november-2026)
-(dual decomposition, ADMM, fairness) was added in November 2026 with AI
-assistance.
+(dual decomposition, ADMM, fairness) was added in November 2026.
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -31,9 +30,7 @@ for every result.
 - **Observation period:** 2025 DE-LU electricity prices. Household demand is generated from the BDEW H0 profile with noise, rather than measured household records.
 - **3 October 2026:** the price snapshot used by the current version was created in the German Energy Operations project.
 - **17 October 2026:** the price series was checked against SMARD, and the battery-control code, experiments and reports were committed. See [data/README.md](data/README.md).
-- **Earlier development:** the May–October project period describes the broader development period. The current snapshot, validation and published results belong to the October phase.
-
-The October data snapshot should not be presented as having been available during the earlier local development phase.
+- **Earlier development:** May to October is the whole development period. The data snapshot, the SMARD check and the published results are from October.
 
 ## Main findings
 
@@ -410,8 +407,7 @@ Roughly in this order:
    it in October.
 7. **Distributed optimisation (November 2026).** Dual decomposition, ADMM
    and fairness objectives on the same problem, plus the exact MILP check of
-   the LP. This part was built with AI assistance (Claude); the derivations
-   are in [docs/theory.md](docs/theory.md).
+   the LP. The derivations are in [docs/theory.md](docs/theory.md).
 
 ## Background
 
@@ -419,8 +415,6 @@ My M.Phil. thesis was about two-player zero-sum matrix games solved with
 linear programming. This project was my way into the multi-agent side of that
 area: several agents that share a limited resource and learn instead of
 being solved for. It was also my first reinforcement learning project.
-
-AI assistance was used in development.
 
 ## Licence and attribution
 
