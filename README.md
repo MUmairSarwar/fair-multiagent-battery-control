@@ -424,3 +424,170 @@ H0 via demandlib (MIT).
 
 Author: [Muhammad Umair Sarwar](https://github.com/MUmairSarwar) ·
 [LinkedIn](https://www.linkedin.com/in/muhammad-umair-sarwar/)
+
+## Distributed optimization: audited extension
+
+This additional implementation preserves the existing `run_distributed.py` workflow and public API.
+The original soft-limit solver modules remain available; the additional hard-limit experiments below use explicit module imports.
+Stage 0 compatibility functions live in `src/fairbattery/stage0_baselines.py`.
+
+
+This extension was built as a learning project with AI assistance. Mathematical notes are in [docs/theory.md](docs/theory.md).
+They are currently an **AI-assisted study draft for the author to verify and
+rewrite**, not yet independently authored derivations. The final authorship
+statement will be updated after that work is completed.
+
+### Stage 0: remove simultaneous battery charging and discharging
+
+Implemented in `src/fairbattery/distributed/centralised.py`, with compatibility
+entry points in `src/fairbattery/stage0_baselines.py`:
+
+- `run_lp(env)`: original continuous relaxation, retained to reproduce the
+  published MARL comparison. It permits simultaneous operation.
+- `run_corrected_lp(env)`: adds a mathematically sufficient throughput fee
+  computed over the current batch, and checks that no cycles remain. This is
+  the proposed convex reference for the later distributed LP algorithms.
+- `run_milp(env)`: enforces exclusive operating modes with binary variables,
+  retaining the original economic objective. This is a physical reference,
+  **not** an LP to which standard convex strong-duality guarantees apply.
+
+A small arbitrary fee is not enough at all negative prices. The sufficient
+fee here is `max(0, -min(price)) * (1-eta**2)/(1+eta**2) + 1e-6` EUR per kWh
+charged plus discharged. It is a modelling penalty, not a calibrated battery
+wear cost. The proof and its assumptions are in the theory notes.
+
+All variants retain the existing **soft** 11 kW transformer penalty, the daily
+half-full initial SOC and the terminal stored-energy valuation. Stages 1–4 below explicitly switch to a hard transformer limit.
+
+Reproduce from the repository root (Python and existing dependencies installed):
+
+```bash
+python scripts/audit_stage0.py --include-milp
+python -m pytest tests/test_baselines.py tests/test_distributed_stage0.py tests/test_data.py tests/test_metrics.py tests/test_env.py -q
+```
+
+For a quicker LP-only comparison, omit `--include-milp`. Neither command
+re-trains or changes the MARL agents. The script regenerates both Stage 0
+figures, schedules (`.npz`), a comparison CSV and a JSON with seed, data/config
+hashes, dates, software versions and solver gaps, under
+`results/distributed/stage0/`.
+
+The optional MILP uses a relative gap of `1e-5` and a 60-second per-day limit;
+a time-limited or otherwise unsuccessful solve raises. Tightening this to
+`1e-9` timed out on one negative-price day in this environment. Runtime depends
+on the machine and solver version. Mode exclusivity is checked at `1e-6` kWh.
+
+The LP fee changes the optimized objective. Therefore `net_benefit_eur` always
+reports the **original** economic score without the throughput fee, and
+`objective_eur` separately reports minimized cost **including** that fee.
+The original cost is negative net benefit. No penalized objective is compared
+to an unpenalized objective as though they were the same problem.
+
+All figures below use the same 51 held-out days and seed 2025. Counts are
+household-steps (29,376 in total), using a 1e-6 kWh overlap threshold.
+
+| Model | Fee (EUR/kWh throughput) | Simultaneous household-steps | Original net benefit (EUR) | Loss vs relaxed LP (EUR) |
+|---|---:|---:|---:|---:|
+| original_lp | 0.000000000 | 212 | 132.055004 | 0.000000 |
+| small_fee_lp | 0.000100000 | 12 | 132.050951 | 0.004053 |
+| sufficient_fee_lp | 0.001631723 | 0 | 131.928555 | 0.126449 |
+| exclusive_milp | 0.000000000 | 0 | 132.053306 | 0.001698 |
+
+All four schedules have zero transformer overload within numerical tolerance.
+MILP values are certified to the recorded relative MIP gap (at most 1e-5),
+not exact arithmetic optimality. The MILP still allows continuous power.
+The sufficient fee eliminates cycling but also discourages useful arbitrage;
+this explains its larger economic-benefit reduction.
+
+The original 212 cycling cases are 208 negative-price and 4 zero-price
+household-steps. These are not 212 distinct clock intervals.
+
+![Stage 0 comparison](results/distributed/stage0/stage0_comparison.png)
+![A household on a day with negative prices](results/distributed/stage0/stage0_example.png)
+
+### Stages 1–4: distributed solvers, fairness and scaling
+
+The new package is `src/fairbattery/distributed/`. `model.py` defines the hard-capacity,
+throughput-penalized LP; `local.py` contains private household LP/QP oracles;
+`algorithms.py` implements price-based dual decomposition and sharing ADMM;
+`fairness.py` supplies log-savings and lexicographic max-min references.
+`datasets.py` preserves the original BDEW H0 load-generation method.
+
+The only coupling constraint is total transformer import. Each household solves
+using its own load and battery parameters and a broadcast price/allocation.
+A coordinator aggregates imports; the implementation simulates these messages
+in one Python process. It is not a deployed network or a privacy protocol.
+
+Dual decomposition uses diminishing price steps, weighted primal averaging and
+an idle-schedule blend for finite-iteration feasibility. ADMM uses the two-block
+sharing formulation of Boyd et al. (2011), Section 7.3. The notes derive the
+Lagrangian, strong duality, local updates, projection, residuals and recovery.
+The central LP is independently checked against CVXPY on three 2025 dates.
+
+Reproduce all distributed experiments and figures:
+
+```bash
+python -m pip install -r requirements.txt
+python scripts/reproduce_distributed.py
+python -m pytest -q
+```
+
+Use `python scripts/reproduce_distributed.py --include-stage0` to also rerun the
+51-day Stage 0 audit including the MILP. Use `python scripts/plot_distributed.py`
+to regenerate Stages 1–4 figures from stored CSVs without solving again.
+`python scripts/distributed_experiments.py --skip-scaling` runs the smaller
+experiments only. Full scaling includes 1,000 local solvers and takes minutes.
+
+Measured results, histories, settings, versions and the input SHA-256 are in
+[`results/distributed/complete`](results/distributed/complete). The dual tolerance
+is a primal–dual certificate in EUR per household; ADMM uses residual RMS.
+Objective gaps are separately measured against the identical central problem.
+The rho sweep deliberately retains a run that reaches its iteration limit;
+small objective error alone is not labelled convergence.
+
+
+Measured scaling on 7 January 2025 (seed 2025):
+
+| Homes | Method | Iterations | Runtime (s) | Total objective gap (EUR) | Messages/agent |
+|---:|---|---:|---:|---:|---:|
+| 6 | dual | 920 | 1.57 | 0.0036194 | 1840 |
+| 6 | admm | 270 | 0.92 | 2.01361e-07 | 540 |
+| 100 | dual | 740 | 19.22 | 0.0026767 | 1480 |
+| 100 | admm | 250 | 17.51 | 1.78707e-05 | 500 |
+| 1000 | dual | 870 | 258.54 | 0.413121 | 1740 |
+| 1000 | admm | 230 | 136.48 | 0.00197363 | 460 |
+
+All six scaling runs met their stated stopping rule and returned schedules with
+zero transformer violation to numerical precision. On the three six-household
+comparison days, ADMM objective gaps were below 0.000007 EUR. The May dual run
+reached its iteration cap despite a 0.002329 EUR objective gap; its `converged`
+flag is false. Centralized solving is faster at these sizes in this serial setup.
+
+![Convergence](results/distributed/complete/figures/convergence.png)
+![Step and penalty sensitivity](results/distributed/complete/figures/sensitivity.png)
+![Fairness](results/distributed/complete/figures/fairness.png)
+![Scaling](results/distributed/complete/figures/scaling.png)
+
+Fairness concerns daily savings per kWh of installed battery, relative to an idle
+battery, including throughput cost and terminal valuation. Proportional fairness
+maximizes log savings; max-min progressively freezes bottleneck households.
+These allocate transformer access through time-varying battery schedules.
+The comparison reports Jain's index, lowest normalized saving and efficiency
+loss. Log fairness does not guarantee that Jain's index increases. Max-min is a
+centralized lexicographic reference; efficient dual/ADMM and the additional
+log-savings ADMM use local household solves.
+
+Limitations: perfect day-ahead prices, synthetic household loads, independent
+daily half-full SOC, idle-feasible recovery, finite solver tolerances, no export,
+no battery aging calibration, no communication delays or packet loss. Scaling
+holds the 96-step horizon fixed and scales capacity as `11*N/6` kW; keeping an
+11 kW transformer for 1,000 homes would be a different, generally infeasible
+experiment. Runtimes measure serial execution, not parallel speedup. Fairness
+is evaluated for six homes, not claimed to scale lexicographic solves to 1,000.
+
+Validation: all 46 tests passed after integration with the latest main branch,
+including its existing distributed solver tests and the additional audit tests. The proportional ADMM experiment on 14 May converged
+in 640 iterations, with log-utility gap 8.28e-6 against central CVXPY. Its
+penalized savings were EUR 4.676598, with a 0.0274% efficiency loss. One local
+Clarabel solve emitted an accuracy warning and was re-solved using the SCS
+fallback; no inaccurate solver status is accepted as a successful local solve.

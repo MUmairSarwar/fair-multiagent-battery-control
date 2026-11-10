@@ -1,0 +1,21 @@
+{
+  "tag": "scale_100_admm",
+  "algorithm": "admm",
+  "n": 100,
+  "T": 96,
+  "iterations": 250,
+  "runtime_seconds": 17.509866234000015,
+  "converged": true,
+  "objective_gap": 1.7870705605105286e-05,
+  "objective_gap_per_agent": 1.7870705605105285e-07,
+  "relative_objective_gap": 4.718795004317317e-07,
+  "messages_per_agent": 500,
+  "scalars_per_agent": 48750,
+  "objective": -37.8713149351379,
+  "max_capacity_violation_kw": 0.0,
+  "local_violation_kwh": 4.376719814125352e-06,
+  "overlap_steps": 0,
+  "rho": 0.1,
+  "max_iter": 1000,
+  "tol": 1e-05
+}

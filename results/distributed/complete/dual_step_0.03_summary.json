@@ -1,0 +1,21 @@
+{
+  "tag": "dual_step_0.03",
+  "algorithm": "dual",
+  "n": 6,
+  "T": 96,
+  "iterations": 2000,
+  "runtime_seconds": 4.2830001620000075,
+  "converged": false,
+  "objective_gap": 0.0012630870622816204,
+  "objective_gap_per_agent": 0.00021051451038027005,
+  "relative_objective_gap": 0.0005737375328118723,
+  "messages_per_agent": 4000,
+  "scalars_per_agent": 390000,
+  "objective": -2.2002436822286597,
+  "max_capacity_violation_kw": 0.0,
+  "local_violation_kwh": 3.1086244689504383e-15,
+  "overlap_steps": 0,
+  "step": 0.03,
+  "max_iter": 2000,
+  "tol": 0.0005
+}

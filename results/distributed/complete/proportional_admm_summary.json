@@ -1,0 +1,28 @@
+{
+  "date": "2025-05-14",
+  "rho": 0.1,
+  "max_iter": 2000,
+  "tol": 1e-06,
+  "iterations": 640,
+  "runtime_seconds": 18.730257563000123,
+  "converged": true,
+  "log_utility_gap": 8.27529555458284e-06,
+  "messages_per_agent": 1280,
+  "scalars_per_agent": 124800,
+  "total_saving_eur": 4.676597745958844,
+  "saving_per_kwh": [
+    0.11971663122250162,
+    0.08129242637228447,
+    0.10783327474286532,
+    0.14297808287997593,
+    0.08810865590944623,
+    0.11471517227435447
+  ],
+  "jain": 0.9660850215721225,
+  "min_saving_per_kwh": 0.08129242637228447,
+  "price_of_fairness": 0.0002742114114629936,
+  "objective": -4.676597745958844,
+  "max_capacity_violation_kw": 1.7763568394002505e-15,
+  "local_violation_kwh": 3.552713678800501e-15,
+  "overlap_steps": 0
+}

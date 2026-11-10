@@ -1,0 +1,21 @@
+{
+  "tag": "admm_rho_0.01",
+  "algorithm": "admm",
+  "n": 6,
+  "T": 96,
+  "iterations": 50,
+  "runtime_seconds": 1.776488850000078,
+  "converged": true,
+  "objective_gap": 1.9639912043345475e-06,
+  "objective_gap_per_agent": 3.2733186738909126e-07,
+  "relative_objective_gap": 8.921122713454601e-07,
+  "messages_per_agent": 100,
+  "scalars_per_agent": 9750,
+  "objective": -2.201504805299737,
+  "max_capacity_violation_kw": 0.0,
+  "local_violation_kwh": 4.52196529643345e-06,
+  "overlap_steps": 0,
+  "rho": 0.01,
+  "max_iter": 2000,
+  "tol": 1e-05
+}
