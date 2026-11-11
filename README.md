@@ -26,10 +26,11 @@ for every result.
 ## Data period
 
 The prices are the 2025 DE-LU day-ahead prices. Household demand is generated
-from the BDEW H0 profile with noise, not measured. The price snapshot was taken
-on 3 October 2026 (shared with the
+from the BDEW H0 profile with noise, not measured. The prices are reused from
+the data snapshot of my
 [German Energy Operations](https://github.com/MUmairSarwar/german-energy-operations)
-project) and checked against SMARD on 17 October 2026. See [data/README.md](data/README.md).
+project and were checked against SMARD on 17 October 2026. See
+[data/README.md](data/README.md).
 
 ## Main findings
 
