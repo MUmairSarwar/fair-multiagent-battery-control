@@ -2,11 +2,10 @@
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 
-I worked on this from May to October 2026 on my laptop and pushed it to
-GitHub in October 2026, so the commit history is short; the steps are listed
-under [How the project developed](#how-the-project-developed). A
-[distributed-optimisation part](#distributed-optimisation-added-november-2026)
-(dual decomposition, ADMM, fairness) was added in November 2026.
+I worked on this from August to November 2026. The steps are listed under
+[How the project developed](#how-the-project-developed), and the
+[distributed-optimisation part](#distributed-optimisation) (dual
+decomposition, ADMM, fairness) comes after the learning results.
 
 Six households share one local transformer, and each one has a home battery.
 A learning agent controls each battery. Every 15 minutes it decides whether to
@@ -27,11 +26,11 @@ for every result.
 ## Data period
 
 The prices are the 2025 DE-LU day-ahead prices. Household demand is generated
-from the BDEW H0 profile with noise, not measured. The price snapshot was taken
-on 3 October 2026 (shared with the
+from the BDEW H0 profile with noise, not measured. The prices are reused from
+the data snapshot of my
 [German Energy Operations](https://github.com/MUmairSarwar/german-energy-operations)
-project), checked against SMARD on 17 October 2026, and the code, experiments
-and reports were committed the same day. See [data/README.md](data/README.md).
+project and were checked against SMARD on 17 October 2026. See
+[data/README.md](data/README.md).
 
 ## Main findings
 
@@ -220,7 +219,7 @@ Q-learning was still improving when training stopped. With a longer run it
 would probably do better, so its numbers should be read as "after 32,000
 training days", not as the limit of the method.
 
-## Distributed optimisation (added November 2026)
+## Distributed optimisation
 
 The LP above is centralised: one solver sees every household's load and
 battery. A real neighbourhood would rather let each household decide for
@@ -547,8 +546,7 @@ results/            per-run JSON, tables (CSV/Markdown) and figures
 
 ## How the project developed
 
-I started in May 2026 and worked on it alongside other things until October.
-Roughly in this order:
+I worked on it from August to November 2026, roughly in this order:
 
 1. **Data.** Getting the 2025 day-ahead prices, checking them against SMARD,
    and handling the switch from hourly to 15-minute prices on 1 Oct 2025.
@@ -561,12 +559,11 @@ Roughly in this order:
    MAPPO. This was my first RL project, so most of the time went here.
 5. **Experiments.** The fairness reward, the 1-bit messages and switching the
    overload price off. Three seeds each, 36 runs in total.
-6. **Write-up.** Tables, figures, tests, CI and this README. Then publishing
-   it in October.
-7. **Distributed optimisation (November 2026).** Dual decomposition, ADMM
+6. **Write-up.** Tables, figures, tests, CI and this README.
+7. **Distributed optimisation.** Dual decomposition, ADMM
    and fairness objectives on the same problem, plus the exact MILP check of
    the LP. The derivations are in [docs/theory.md](docs/theory.md).
-8. **Exclusive modes and a hard limit (November 2026).** The throughput-fee
+8. **Exclusive modes and a hard limit.** The throughput-fee
    and MILP comparison, the hard-limit dual decomposition and ADMM with
    certified stopping, lexicographic max-min fairness and the 1,000-household
    scaling runs. The derivations are in Part II of
