@@ -1,13 +1,12 @@
 # Fair multi-agent control of home batteries in a German neighbourhood
 
-**Project period: May 2026 – October 2026.** I built it on my laptop and
-pushed it to GitHub in October 2026, so the commit history here is short.
-The steps are listed under [How the project developed](#how-the-project-developed).
-A [distributed-optimisation part](#distributed-optimisation-added-november-2026)
-(dual decomposition, ADMM, fairness) was added in November 2026.
-
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+I worked on this from May to October 2026 on my laptop and pushed it to
+GitHub in October 2026, so the commit history is short; the steps are listed
+under [How the project developed](#how-the-project-developed). A
+[distributed-optimisation part](#distributed-optimisation-added-november-2026)
+(dual decomposition, ADMM, fairness) was added in November 2026.
 
 Six households share one local transformer, and each one has a home battery.
 A learning agent controls each battery. Every 15 minutes it decides whether to
@@ -25,12 +24,14 @@ for every result.
 ![Net benefit of each method](results/figures/net_benefit.png)
 
 
-## Data period and version history
+## Data period
 
-- **Observation period:** 2025 DE-LU electricity prices. Household demand is generated from the BDEW H0 profile with noise, rather than measured household records.
-- **3 October 2026:** the price snapshot used by the current version was created in the German Energy Operations project.
-- **17 October 2026:** the price series was checked against SMARD, and the battery-control code, experiments and reports were committed. See [data/README.md](data/README.md).
-- **Earlier development:** May to October is the whole development period. The data snapshot, the SMARD check and the published results are from October.
+The prices are the 2025 DE-LU day-ahead prices. Household demand is generated
+from the BDEW H0 profile with noise, not measured. The price snapshot was taken
+on 3 October 2026 (shared with the
+[German Energy Operations](https://github.com/MUmairSarwar/german-energy-operations)
+project), checked against SMARD on 17 October 2026, and the code, experiments
+and reports were committed the same day. See [data/README.md](data/README.md).
 
 ## Main findings
 
