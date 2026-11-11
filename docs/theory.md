@@ -304,7 +304,7 @@ LP's benefit is an upper bound on the MILP's.
 The MILP is solved per day with SciPy's HiGHS interface, a relative MIP gap
 of $10^{-5}$ and a 60-second time limit. A time-limited or failed solve
 raises an error instead of returning an incumbent as if it were optimal;
-the largest gap recorded over the 51 days is $9.2 \times 10^{-6}$. A gap of
+the largest gap recorded over the 51 days is $9.8 \times 10^{-6}$. A gap of
 $10^{-9}$ ran into the time limit on one negative-price day. After the
 solve, exclusivity is checked with a tolerance of $10^{-6}$ kWh. The MILP
 still uses continuous power, while the RL agents choose from five levels, so
