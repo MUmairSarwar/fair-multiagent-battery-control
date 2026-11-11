@@ -1,4 +1,4 @@
-"""Reproduce Stage 0 on the repository's 51 held-out days, without retraining."""
+"""Compare the LP variants and the exclusive MILP on the 51 test days (no RL training)."""
 from __future__ import annotations
 
 import argparse

@@ -1,4 +1,4 @@
-"""Run Stages 1-4 with fixed seeds; produces measured results, not synthetic timings."""
+"""Run the hard-limit experiments (dual, ADMM, sensitivity, fairness, scaling) with fixed seeds."""
 import argparse,json,sys,platform,hashlib
 from pathlib import Path
 from time import perf_counter
@@ -62,7 +62,7 @@ def main():
         p=scenario();_,reference=central_lp(p);sweep=[]
         for step in [.01,.03,.1]:
             sweep.append(record_run(p,'dual',reference,f'dual_step_{step}',out,step=step,max_iter=2000,tol=5e-4))
-        # A constant step is a deliberate non-convergent comparator, honestly labelled.
+        # Constant step for comparison only; it is not expected to converge exactly.
         sweep.append(record_run(p,'dual',reference,'dual_constant_0.03',out,step=.03,rule='constant',max_iter=2000,tol=5e-4))
         for rho in [.01,.1,1.]:
             sweep.append(record_run(p,'admm',reference,f'admm_rho_{rho}',out,rho=rho,max_iter=2000,tol=1e-5))

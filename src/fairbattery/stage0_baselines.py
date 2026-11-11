@@ -1,4 +1,8 @@
-"""Baselines: no battery, a simple price rule, and the perfect-foresight LP."""
+"""Baselines with the extended LP: optional throughput fee and exclusive-mode MILP.
+
+Mirrors ``baselines.py`` but solves each day through
+``distributed.centralised.solve_day`` and reports the fee separately.
+"""
 
 from __future__ import annotations
 
@@ -129,9 +133,10 @@ def solve_day_milp(env: BatteryCommunity, b: int):
 def run_lp(env: BatteryCommunity, *, throughput_cost: float = 0.0, exclusive: bool = False):
     """Solve each day and replay the original environment accounting.
 
-    Default retains the legacy relaxed LP for reproducibility. exclusive=True
-    selects the physically exclusive MILP. Savings do NOT subtract a modelling
-    throughput fee; that fee and the optimized objective are returned separately.
+    By default this is the original relaxed LP, so the published numbers can
+    be reproduced. ``exclusive=True`` solves the exclusive-mode MILP. Savings
+    never include the throughput fee; the fee and the minimised objective are
+    returned separately.
     """
     from .distributed.centralised import solve_day
     B, n, T = env.B, env.n, STEPS_PER_DAY
@@ -174,10 +179,11 @@ def run_milp(env: BatteryCommunity):
 
 
 def run_corrected_lp(env: BatteryCommunity):
-    """Cycle-free penalized LP for this model; original scores remain separate.
+    """LP with the sufficient throughput fee, so no battery charges and discharges at once.
 
-    Uses one sufficient EUR/kWh fee over the entire current batch. This is a
-    changed objective, not the unpenalized exclusive MILP optimum.
+    One fee is computed from the lowest price in the whole batch. This
+    changes the objective, so the result is not the MILP optimum; the
+    original score is reported separately.
     """
     from .distributed.centralised import sufficient_throughput_cost
 

@@ -1,4 +1,4 @@
-"""Stage 0: physical modes, cost accounting, and an adversarial negative-price case."""
+"""LP variants and MILP: exclusive modes, cost accounting and a negative-price case."""
 import numpy as np
 import pytest
 

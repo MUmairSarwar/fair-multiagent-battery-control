@@ -1,4 +1,4 @@
-"""Regenerate every Stages 1-4 figure from measured CSVs (no optimization)."""
+"""Redraw the hard-limit figures from the stored CSV files without solving anything."""
 import argparse
 from pathlib import Path
 import numpy as np

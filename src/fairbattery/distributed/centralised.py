@@ -1,4 +1,4 @@
-"""Auditable LP relaxation and exclusive-mode MILP, with identical accounting."""
+"""Daily LP (optionally with a throughput fee) and exclusive-mode MILP, scored the same way."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,10 +24,11 @@ class DaySolution:
 
 
 def sufficient_throughput_cost(prices, eta: float, margin: float = 1e-6) -> float:
-    """Strict sufficient fee for removing cycles in this particular model.
+    """Fee per kWh of throughput that rules out simultaneous charge and discharge.
 
-    Assumes upper-only transformer constraints and no lower import requirement.
-    This changes the economic objective; it is not an exact MILP reformulation.
+    Returns the bound from theory Section 9 plus ``margin``. It holds for this
+    model only (upper limits on import, no minimum import). The fee changes
+    the objective, so the result is not the MILP optimum.
     """
     prices = np.asarray(prices, dtype=float)
     if prices.size == 0 or not np.isfinite(prices).all():
@@ -41,7 +42,7 @@ def sufficient_throughput_cost(prices, eta: float, margin: float = 1e-6) -> floa
 def solve_day(env, b: int, *, throughput_cost: float = 0.0,
               exclusive: bool = False, time_limit: float = 60.0,
               mip_rel_gap: float = 1e-5) -> DaySolution:
-    """Solve one day; raise rather than silently accept a time-limited incumbent.
+    """Solve one day as an LP or MILP; raise if optimality is not proven.
 
     c,d are grid-side ENERGY per step (kWh), not power. The existing soft
     transformer penalty and terminal energy valuation are preserved exactly.

@@ -17,17 +17,21 @@ class DistributedResult:
 
 def dual_decomposition(p, *, max_iter=3000, step=0.1, rule='diminishing', tol=1e-4,
                        reference=None, check_every=10):
-    """Each household solves its LP; coordinator sees imports and one cost scalar.
+    """Dual decomposition on the congestion price for the hard-limit LP.
 
-    Weighted ergodic averaging + feasible idle blending; no centralized solve.
-    Polyak uses a measured feasible primal upper bound, not the reference optimum.
+    Each household solves its own LP for the current price and reports its
+    import and cost. Feasible schedules come from step-weighted averages that
+    are blended with the idle schedule (theory, Section 13). The run stops
+    when the best feasible cost and the best dual bound are within
+    ``tol * n`` EUR. ``reference`` is only used to log the gap. The Polyak
+    rule uses the best feasible cost found so far, not the true optimum.
     """
     if rule not in ('diminishing','constant','polyak') or step<=0: raise ValueError('invalid step rule')
     start=perf_counter();agents=[HouseholdLP(p,i) for i in range(p.n)]
     lam=np.zeros(p.T);avg=p.idle();weight=0.;best=p.idle();ub=float(p.costs(best).sum())
     lb=-np.inf;history=[];converged=False
     tail=p.idle();tail_weight=0.
-    # Checks the recovery precondition immediately.
+    # Fail early if the idle schedule is infeasible; recovery depends on it.
     p.recover(best)
     for k in range(1,max_iter+1):
         answers=[a.solve(lam) for a in agents]
@@ -39,7 +43,7 @@ def dual_decomposition(p, *, max_iter=3000, step=0.1, rule='diminishing', tol=1e
         elif rule=='diminishing': alpha=step/(k**0.6*p.n)
         else: alpha=step/p.n
         weight+=alpha;avg+=(alpha/weight)*(x-avg)
-        # Local loop removal and one scalar blending message produce a feasible point.
+        # Recover a feasible schedule from the last iterate and from each average.
         candidates=[x,avg]
         if k>max_iter//2:
             tail_weight+=alpha;tail+=(alpha/tail_weight)*(x-tail)
@@ -65,10 +69,13 @@ def dual_decomposition(p, *, max_iter=3000, step=0.1, rule='diminishing', tol=1e
 
 
 def sharing_admm(p, *, rho=0.1, max_iter=2000, tol=1e-4, reference=None, check_every=10):
-    """Boyd 7.3 sharing; local QPs, aggregate-capacity projection, common dual.
+    """Two-block sharing ADMM (Boyd et al. 2011, Section 7.3).
 
-    Split g_i(x_i)=z_i. Coordinator broadcasts delta only; each agent can form
-    z_i = g_i + u_old - delta and u_new=delta locally. Execution here is serial.
+    Households solve local QPs with the split g_i(x_i) = z_i, and the
+    coordinator projects the allocations onto the capacity limit. Every
+    household ends up with the same scaled multiplier ``delta``, so the
+    coordinator only broadcasts that vector; each household forms
+    z_i = g_i + u_old - delta itself. Runs serially here.
     """
     if rho<=0:raise ValueError('rho must be positive')
     start=perf_counter();agents=[HouseholdQP(p,i,rho) for i in range(p.n)]
@@ -81,14 +88,14 @@ def sharing_admm(p, *, rho=0.1, max_iter=2000, tol=1e-4, reference=None, check_e
         delta=np.maximum((v.sum(axis=0)-p.limit)/p.n,0)
         znew=v-delta
         r=g-znew
-        # A=blockdiag(G), B=-I: true dual residual is rho A^T(znew-z).
+        # With A = blockdiag(G) and B = -I, the dual residual is rho * A^T (z_new - z).
         dz=znew-z;s=rho*np.hstack([dz,-dz,np.zeros_like(dz)])
         rnorm=float(np.linalg.norm(r));snorm=float(np.linalg.norm(s))
         u=delta;z=znew
         recovered,_=p.recover(x);value=float(p.costs(recovered).sum())
         if value<ub:best=recovered;ub=value
         if k==1 or k%check_every==0 or k==max_iter:
-            # Absolute RMS residual tolerances have comparable meaning across N.
+            # RMS residuals, so one tolerance works for any number of households.
             rr=rnorm/np.sqrt(p.n*p.T);ss=snorm/np.sqrt(3*p.n*p.T)
             history.append(dict(iteration=k,objective=ub,
                                 objective_gap=ub-reference if reference is not None else None,

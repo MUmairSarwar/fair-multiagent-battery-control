@@ -37,7 +37,7 @@ def test_dual_averaging_and_recovery_match_cvxpy():
 
 def test_recovery_preserves_soc_and_restores_capacity():
     p=scenario();x=p.idle();T=p.T
-    # A genuine locally feasible but coupled-infeasible schedule from local LPs.
+    # Household LP solutions that are each feasible but jointly exceed the limit.
     from fairbattery.distributed.local import HouseholdLP
     x=np.stack([HouseholdLP(p,i).solve(np.zeros(T))[0] for i in range(p.n)])
     y,a=p.recover(x)
