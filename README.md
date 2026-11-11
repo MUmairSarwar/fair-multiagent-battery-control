@@ -1,12 +1,6 @@
-# Fair multi-agent control of home batteries in a German neighbourhood
+# Fair Multi-Agent Battery Control
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
-
-I worked on this from May to October 2026 on my laptop and pushed it to
-GitHub in October 2026, so the commit history is short; the steps are listed
-under [How the project developed](#how-the-project-developed). A
-[distributed-optimisation part](#distributed-optimisation-added-november-2026)
-(dual decomposition, ADMM, fairness) was added in November 2026.
 
 Six households share one local transformer, and each one has a home battery.
 A learning agent controls each battery. Every 15 minutes it decides whether to
@@ -16,10 +10,13 @@ cheap for everyone at the same time. If all batteries charge together, the
 transformer is overloaded. The agents have to save money without doing that,
 and the savings should be shared fairly.
 
-I compare three multi-agent reinforcement learning methods with simple
-baselines and with the best possible schedule. That schedule comes from a
-linear program that knows all prices and loads in advance. It is the yardstick
-for every result.
+I built the battery simulation, implemented three multi-agent reinforcement
+learning methods and compared them with simple policies and a perfect-foresight
+linear programming benchmark. I later used the same setting to study
+[distributed optimisation and fairness](#distributed-optimisation-added-november-2026).
+
+[Results](#main-findings) · [Run locally](#reproduce) ·
+[Data and attribution](data/README.md) · [Model derivations](docs/theory.md)
 
 ![Net benefit of each method](results/figures/net_benefit.png)
 
@@ -38,13 +35,15 @@ and reports were committed the same day. See [data/README.md](data/README.md).
 All numbers are for 51 held-out test days of 2025, with 3 training seeds for
 each learning method.
 
-- **The simple price rule saves money but breaks the transformer.** Every
+- **The price rule exceeds the simulated transformer limit.** Every
   household charges in the same cheap quarter-hours. That saves EUR 92.40 in
   energy cost, but the load goes over the limit in 293 of 4,896 quarter-hours,
   with a peak of 27.0 kW against an 11 kW limit. With the overload priced at
   EUR 0.5/kWh, the net result is −EUR 376.84.
-- **The LP optimum gets EUR 132.06** with no overloads at all. This is the
-  upper bound.
+- **The perfect-foresight LP reaches EUR 132.06** with no overloads. This is
+  the upper bound for the modelled objective and uses prices and loads in
+  advance. The [exclusive-mode comparison](#distributed-optimisation-added-november-2026)
+  checks the effect of tightening the battery model.
 - **Independent PPO reached 68.2% ± 0.9% of the LP benefit** (EUR 90.01 ±
   1.19). MAPPO reached 66.4% ± 2.7%, and independent tabular Q-learning
   48.2% ± 6.9%. MAPPO, with its shared critic, did **not** beat independent
@@ -513,6 +512,9 @@ python scripts/run_distributed.py           # writes results/distributed/
 python scripts/run_distributed.py --quick --out /tmp/distributed   # short check
 ```
 
+In `summary.json`, a null median means that no evaluated day reached the
+1% gap within the iteration budget. Quick-run values are smoke checks.
+
 The extension with exclusive modes and a hard limit:
 
 ```bash
@@ -547,8 +549,11 @@ results/            per-run JSON, tables (CSV/Markdown) and figures
 
 ## How the project developed
 
-I started in May 2026 and worked on it alongside other things until October.
-Roughly in this order:
+I worked on the reinforcement-learning study from August to October 2026 and added the distributed optimisation and fairness extensions in November 2026.
+
+The [first GitHub implementation](https://github.com/MUmairSarwar/fair-multiagent-battery-control/commit/664c6f9)
+and RL results were committed on 17 October 2026. The sequence below shows
+how the modelling and evaluation developed.
 
 1. **Data.** Getting the 2025 day-ahead prices, checking them against SMARD,
    and handling the switch from hourly to 15-minute prices on 1 Oct 2025.

@@ -308,18 +308,20 @@ def main():
         "milp_minus_lp_benefit_eur": round(float(-(main_df["milp_cost"].sum() - main_df["lp_cost"].sum())), 4),
         "dual_days_reaching_1pct": int(main_df["dual_iters_to_1pct"].notna().sum()),
         "admm_days_reaching_1pct": int(main_df["admm_iters_to_1pct"].notna().sum()),
-        "admm_median_iters_to_1pct": float(main_df["admm_iters_to_1pct"].median()),
-        "dual_median_iters_to_1pct": float(main_df["dual_iters_to_1pct"].median()),
         "admm_proportional_max_violation_kwh": float(max(r["admm_proportional_violation_kwh"] for r in fair_rows)),
     }
-    (OUT / "summary.json").write_text(json.dumps(stats, indent=2))
+    for method in ("admm", "dual"):
+        reached = main_df[f"{method}_iters_to_1pct"].dropna()
+        stats[f"{method}_median_iters_to_1pct"] = float(reached.median()) if len(reached) else None
+    summary_json = json.dumps(stats, indent=2, allow_nan=False)
+    (OUT / "summary.json").write_text(summary_json)
     (OUT / "tables.md").write_text(
         "## Main comparison\n\n" + md(summary) + "\n\n## Fairness (hard transformer limit)\n\n" + md(fair_df)
         + "\n\n## Scaling (synthetic households)\n\n" + md(scale_summary) + "\n"
     )
     figures(main_rows, fair_rows, scale_df, cap, day_for_plot=int(days[0]) if args.quick else 10)
     print((OUT / "tables.md").read_text())
-    print(json.dumps(stats, indent=2))
+    print(summary_json)
 
 
 if __name__ == "__main__":
