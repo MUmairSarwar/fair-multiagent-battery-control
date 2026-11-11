@@ -21,16 +21,15 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from fairbattery import data
-from fairbattery.stage0_baselines import run_lp
-from fairbattery.distributed.centralised import sufficient_throughput_cost
+from fairbattery.lp_variants import run_variant, sufficient_throughput_cost
 from fairbattery.env import BatteryCommunity, EnvConfig
 from fairbattery.metrics import baseline_cost, summarise
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--out', type=Path, default=data.REPO_ROOT / 'results' / 'distributed' / 'stage0')
-    parser.add_argument('--include-milp', action='store_true', help='Also attempt the slower exclusive MILP; fails on unproven time-limited solves')
+    parser.add_argument('--out', type=Path, default=data.REPO_ROOT / 'results' / 'distributed' / 'lp_variants')
+    parser.add_argument('--include-milp', action='store_true', help='Also solve the exclusive-mode MILP (slower); raises if a day hits the time limit')
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     cfg_path = data.REPO_ROOT / 'configs' / 'default.yaml'
@@ -50,7 +49,7 @@ def main():
     for name, kappa, exclusive in variants:
         print(f'Solving {name} ...', flush=True)
         start = perf_counter()
-        result = run_lp(env, throughput_cost=kappa, exclusive=exclusive)
+        result = run_variant(env, throughput_cost=kappa, exclusive=exclusive)
         elapsed = perf_counter() - start
         row = summarise(result, env, base)
         c, d, e = (result[k] for k in ('charge_kwh', 'discharge_kwh', 'energy_kwh'))
@@ -85,7 +84,7 @@ def main():
         row['original_benefit_loss_pct'] = 100 * row['original_benefit_loss_eur'] / abs(orig)
     pd.DataFrame(rows).to_csv(args.out / 'comparison.csv', index=False)
     report = {
-        'scope': 'Stage 0 only; soft transformer penalty; daily independent horizons',
+        'scope': 'LP variants and exclusive MILP; soft transformer penalty; independent daily horizons',
         'seed': cfg['eval']['load_seed'], 'overlap_tolerance_kwh': 1e-6,
         'test_dates': dates[days].tolist(), 'config': cfg,
         'input_sha256': hashlib.sha256(data.PROCESSED_FILE.read_bytes()).hexdigest(),
@@ -99,20 +98,23 @@ def main():
     plot_results(raw, env, dates[days], args.out)
 
 
+LABELS = {'original_lp': 'Original LP', 'small_fee_lp': 'Small fee', 'sufficient_fee_lp': 'Sufficient fee', 'exclusive_milp': 'Exclusive MILP'}
+
+
 def plot_results(raw, env, dates, out):
     names = list(raw)
     fig, axes = plt.subplots(1, 2, figsize=(11,4.2), layout='constrained')
     counts = [np.count_nonzero((raw[n]['charge_kwh']>1e-6)&(raw[n]['discharge_kwh']>1e-6)) for n in names]
     benefits = [float(raw[n]['saving'].sum()-env.cfg.overload_penalty*raw[n]['overload_kwh'].sum()) for n in names]
-    labels = ['Original LP','Small fee LP','Sufficient fee LP','Exclusive MILP'][:len(names)]
+    labels = [LABELS[n] for n in names]
     for ax, vals, title in zip(axes, [counts, benefits],
-                             ['Simultaneous household-steps','Original economic benefit (EUR)']):
+                             ['Household-steps charging and discharging at once','Net benefit (EUR)']):
         bars = ax.bar(labels, vals, color=['#777777','#cf8d30','#31877a','#285a91'])
         ax.bar_label(bars, fmt='%.3f' if ax is axes[1] else '%.0f', padding=3)
         ax.set_title(title); ax.tick_params(axis='x', rotation=18)
         ax.set_ylim(0, max(vals)*1.2); ax.spines[['top','right']].set_visible(False)
-    fig.suptitle('Stage 0: identical 51 test days and loads; fees excluded from economic-benefit bars')
-    fig.savefig(out/'stage0_comparison.png', dpi=180); plt.close(fig)
+    fig.suptitle('51 test days, identical loads; benefit shown without the throughput fee')
+    fig.savefig(out/'comparison.png', dpi=180); plt.close(fig)
     old = raw['original_lp']; both=(old['charge_kwh']>1e-6)&(old['discharge_kwh']>1e-6)
     # Pick the household/day containing the most cycling, deterministically.
     b,i = np.unravel_index(both.sum(axis=2).argmax(), both.shape[:2])
@@ -124,9 +126,9 @@ def plot_results(raw, env, dates, out):
         r=raw[name]
         ax.step(x,r['charge_kwh'][b,i]/data.DT_HOURS,where='post',label='Charge')
         ax.step(x,r['discharge_kwh'][b,i]/data.DT_HOURS,where='post',label='Discharge')
-        ax.set_ylabel('Power (kW)'); ax.set_title(name); ax.legend(loc='upper right')
-    axes[-1].set_xlabel('Local hour'); fig.suptitle(f'{dates[b]}, household {i+1}: original vs corrected schedule')
-    fig.savefig(out/'stage0_example.png',dpi=180); plt.close(fig)
+        ax.set_ylabel('Power (kW)'); ax.set_title(LABELS[name]); ax.legend(loc='upper right')
+    axes[-1].set_xlabel('Local hour'); fig.suptitle(f'{dates[b]}, household {i+1}: original LP and corrected schedule')
+    fig.savefig(out/'example_day.png',dpi=180); plt.close(fig)
 
 
 if __name__ == '__main__':

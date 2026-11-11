@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--results',type=Path,default=Path(__file__).resolve().parents[1]/'results'/'distributed'/'complete')
+    ap.add_argument('--results',type=Path,default=Path(__file__).resolve().parents[1]/'results'/'distributed'/'hard_limit')
     a=ap.parse_args();root=a.results;out=root/'figures';out.mkdir(exist_ok=True,parents=True)
     plt.rcParams.update({'font.size':10,'axes.spines.top':False,'axes.spines.right':False})
     date='2025-01-07'
@@ -24,7 +24,7 @@ def main():
     for key in ['primal_residual','dual_residual']:axes[2].semilogy(d.iteration,np.maximum(d[key],1e-12),label=key.replace('_',' '))
     for ax,title in zip(axes,['Feasible objective gap (EUR)','Transformer exceedance (kW)','ADMM residual norms']):
         ax.set_title(title);ax.set_xlabel('Iteration');ax.legend(fontsize=8);ax.grid(alpha=.2)
-    fig.suptitle('Convergence on 7 January 2025; logarithmic axes floor values at 1e-12')
+    fig.suptitle('Convergence on 7 January 2025 (values below 1e-12 are drawn at 1e-12)')
     fig.savefig(out/'convergence.png',dpi=160);plt.close(fig)
     fig,axes=plt.subplots(1,2,figsize=(11,4),layout='constrained')
     for step in [.01,.03,.1]:
@@ -43,7 +43,7 @@ def main():
             ax.bar(np.arange(len(sub))+(j-1)*.25,vals,width=.25,label=kind)
         ax.set_xticks(range(len(sub)),sub.date.str[5:],rotation=20);ax.set_title(title)
     axes[0].set_ylim(0,1.05);axes[-1].legend(fontsize=8)
-    fig.suptitle('Fairness of penalized daily savings; not a guarantee of every metric improving')
+    fig.suptitle('Fairness of daily savings under the hard limit, three test days')
     fig.savefig(out/'fairness.png',dpi=160);plt.close(fig)
     if (root/'scaling.csv').exists():
         d=pd.read_csv(root/'scaling.csv');fig,axes=plt.subplots(1,3,figsize=(14,4),layout='constrained')
@@ -53,7 +53,7 @@ def main():
                 axes[1].semilogx(sub.n,sub.iterations,'o-',label=alg)
                 axes[2].loglog(sub.n,sub.messages_per_agent,'o-',label=alg)
                 for _,row in sub.iterrows():
-                    if not row.converged:axes[1].annotate('limit reached',(row.n,row.iterations),fontsize=8)
+                    if not row.converged:axes[1].annotate('iteration limit',(row.n,row.iterations),fontsize=8)
         for ax,title in zip(axes,['Measured serial runtime (s)','Iterations','Messages per agent']):
             ax.set_xlabel('Households');ax.set_title(title);ax.legend();ax.grid(alpha=.2)
         fig.suptitle('Scaling: fixed 96-interval horizon; transformer capacity = 11 N / 6 kW')

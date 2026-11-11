@@ -2,8 +2,7 @@
 import numpy as np
 import pytest
 
-from fairbattery.stage0_baselines import run_lp, run_milp
-from fairbattery.distributed.centralised import solve_day, sufficient_throughput_cost
+from fairbattery.lp_variants import run_milp, run_variant, solve_day, sufficient_throughput_cost
 from fairbattery.env import BatteryCommunity, EnvConfig
 
 
@@ -15,7 +14,7 @@ def negative_price_env():
     return env
 
 
-def test_negative_price_cycles_are_real_not_roundoff():
+def test_negative_price_overlap_is_material():
     env = negative_price_env()
     original = solve_day(env,0)
     small = solve_day(env,0,throughput_cost=1e-4)
@@ -39,7 +38,7 @@ def test_sufficient_fee_eliminates_cycles_but_changes_objective():
 def test_exclusive_schedule_has_valid_energy_and_original_accounting(env):
     # Includes May's negative-price season, with fixed loads shared by both solves.
     env.reset(np.array([5,120,300]),np.random.default_rng(2025))
-    relaxed=run_lp(env)
+    relaxed=run_variant(env)
     exact=run_milp(env)
     c,d,e=(exact[k] for k in ('charge_kwh','discharge_kwh','energy_kwh'))
     assert exact['simultaneous_charge_discharge_steps']==0
@@ -78,10 +77,10 @@ def test_invalid_fee_rejected(fee):
         solve_day(negative_price_env(),0,throughput_cost=fee)
 
 
-def test_corrected_entry_point_returns_cycle_free_lp():
-    from fairbattery.stage0_baselines import run_corrected_lp
+def test_sufficient_fee_lp_has_no_simultaneous_operation():
+    from fairbattery.lp_variants import run_sufficient_fee_lp
     env = negative_price_env()
-    result = run_corrected_lp(env)
+    result = run_sufficient_fee_lp(env)
     assert result['simultaneous_charge_discharge_steps'] == 0
     assert result['throughput_cost_eur_per_kwh'] == pytest.approx(
         sufficient_throughput_cost(env.price, env.eta))

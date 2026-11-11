@@ -6,10 +6,10 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 import numpy as np
 import pandas as pd
 import scipy,cvxpy,highspy,osqp
-from fairbattery.distributed.datasets import scenario
-from fairbattery.distributed.model import central_lp,central_cvxpy
-from fairbattery.distributed.algorithms import dual_decomposition,sharing_admm
-from fairbattery.distributed.fairness import solve_fair,metrics
+from fairbattery.distributed.hard_limit.datasets import scenario
+from fairbattery.distributed.hard_limit.model import central_lp,central_cvxpy
+from fairbattery.distributed.hard_limit.algorithms import dual_decomposition,sharing_admm
+from fairbattery.distributed.hard_limit.fairness import solve_fair,metrics
 from fairbattery import data
 
 
@@ -33,7 +33,7 @@ def record_run(p,method,reference,tag,out,**kwargs):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--out',type=Path,default=data.REPO_ROOT/'results'/'distributed'/'complete')
+    ap.add_argument('--out',type=Path,default=data.REPO_ROOT/'results'/'distributed'/'hard_limit')
     ap.add_argument('--sizes',type=int,nargs='+',default=[6,100,1000])
     ap.add_argument('--skip-scaling',action='store_true')
     ap.add_argument('--only-scaling',action='store_true')

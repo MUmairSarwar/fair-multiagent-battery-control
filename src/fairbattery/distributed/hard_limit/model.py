@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import linprog
-from .centralised import sufficient_throughput_cost
+from ...lp_variants import sufficient_throughput_cost
 
 
 @dataclass

@@ -1,4 +1,10 @@
-"""Daily LP (optionally with a throughput fee) and exclusive-mode MILP, scored the same way."""
+"""Variants of the daily soft-limit LP used to study simultaneous charge and discharge.
+
+`solve_day` solves one day as the original LP, as the LP with a throughput
+fee, or as the exclusive-mode MILP. `run_variant` replays a variant through
+the environment's accounting for a whole batch. The derivations are in
+docs/theory.md, Sections 7-11.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,8 +14,9 @@ import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import Bounds, LinearConstraint, linprog, milp
 
-from fairbattery.stage0_baselines import _build_day_lp
-from fairbattery.data import DT_HOURS, STEPS_PER_DAY
+from .baselines import build_day_lp
+from .data import DT_HOURS, STEPS_PER_DAY
+from .env import BatteryCommunity
 
 
 @dataclass(frozen=True)
@@ -44,8 +51,8 @@ def solve_day(env, b: int, *, throughput_cost: float = 0.0,
               mip_rel_gap: float = 1e-5) -> DaySolution:
     """Solve one day as an LP or MILP; raise if optimality is not proven.
 
-    c,d are grid-side ENERGY per step (kWh), not power. The existing soft
-    transformer penalty and terminal energy valuation are preserved exactly.
+    c and d are energies per step (kWh), not power. The soft transformer
+    penalty and the end-of-day valuation are the same as in the original LP.
     """
     if not np.isfinite(throughput_cost) or throughput_cost < 0:
         raise ValueError('throughput_cost must be finite and nonnegative')
@@ -53,7 +60,7 @@ def solve_day(env, b: int, *, throughput_cost: float = 0.0,
         raise ValueError('invalid efficiency or overload penalty')
     if not 0 <= b < env.B:
         raise IndexError('day index outside current batch')
-    original, A, rhs, bound_pairs = _build_day_lp(env, b)
+    original, A, rhs, bound_pairs = build_day_lp(env, b)
     n, T = env.n, STEPS_PER_DAY
     m = n * T
     cost = original.copy()
@@ -102,3 +109,65 @@ def solve_day(env, b: int, *, throughput_cost: float = 0.0,
     return DaySolution(c, d, float(cost @ x), float(original @ x),
                        float(throughput_cost * (c.sum() + d.sum())),
                        elapsed, float(getattr(res, 'mip_gap', np.nan)))
+
+
+def run_variant(env: BatteryCommunity, *, throughput_cost: float = 0.0, exclusive: bool = False):
+    """Solve each day and replay the original environment accounting.
+
+    By default this is the original relaxed LP, so the published numbers can
+    be reproduced. ``exclusive=True`` solves the exclusive-mode MILP. Savings
+    never include the throughput fee; the fee and the minimised objective are
+    returned separately.
+    """
+    B, n, T = env.B, env.n, STEPS_PER_DAY
+    charge = np.zeros((B, n, T))
+    discharge = np.zeros((B, n, T))
+    solutions = []
+    for b in range(B):
+        result = solve_day(env, b, throughput_cost=throughput_cost, exclusive=exclusive)
+        charge[b], discharge[b] = result.charge, result.discharge
+        solutions.append(result)
+    eta = env.eta
+    e0 = env.cfg.soc_init * env.cap
+    flow = charge * eta - discharge / eta
+    energy = e0[None, :, None] + np.cumsum(flow, axis=2)
+    e_prev = np.concatenate([np.repeat(e0[None, :, None], B, 0), energy[:, :, :-1]], axis=2)
+    grid = env.loads + charge - discharge
+    total_kw = grid.sum(axis=1) / DT_HOURS
+    overload = np.clip(total_kw - env.cfg.transformer_kw, 0, None) * DT_HOURS
+    saving = env.price[:, None, :] * (env.loads - grid) + env.p_ref[:, None, None] * (energy - e_prev)
+    both = ((charge > 1e-6) & (discharge > 1e-6)).sum()
+    return {
+        "saving": saving,
+        "charge_kwh": charge,
+        "discharge_kwh": discharge,
+        "energy_kwh": energy,
+        "objective_eur": np.array([r.objective for r in solutions]),
+        "throughput_fee_eur": np.array([r.throughput_fee for r in solutions]),
+        "solver_seconds": np.array([r.solve_seconds for r in solutions]),
+        "mip_gaps": np.array([r.mip_gap for r in solutions]),
+        "total_kw": total_kw,
+        "overload_kwh": overload,
+        "grid_kwh": grid,
+        "simultaneous_charge_discharge_steps": int(both),
+    }
+
+
+def run_milp(env: BatteryCommunity):
+    """Evaluate the exclusive-mode baseline using the unchanged economic score."""
+    return run_variant(env, exclusive=True)
+
+
+def run_sufficient_fee_lp(env: BatteryCommunity):
+    """LP with the sufficient throughput fee, so no battery charges and discharges at once.
+
+    One fee is computed from the lowest price in the whole batch. This
+    changes the objective, so the result is not the MILP optimum; the
+    original score is reported separately.
+    """
+    fee = sufficient_throughput_cost(env.price, env.eta)
+    result = run_variant(env, throughput_cost=fee)
+    if result['simultaneous_charge_discharge_steps']:
+        raise RuntimeError('Sufficient-fee LP still charges and discharges at once')
+    result['throughput_cost_eur_per_kwh'] = fee
+    return result

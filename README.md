@@ -314,10 +314,10 @@ Two simplifications above kept bothering me. The LP may charge and discharge
 the same battery in the same quarter-hour, and the transformer limit is only
 a penalty. This extension removes both. The derivations are in Part II of
 [docs/theory.md](docs/theory.md#part-ii-exclusive-battery-modes-and-a-hard-transformer-limit).
-The code above and `scripts/run_distributed.py` are unchanged; the new code
-is in `src/fairbattery/stage0_baselines.py` and in `centralised.py`,
-`model.py`, `local.py`, `algorithms.py`, `fairness.py` and `datasets.py`
-under `src/fairbattery/distributed/`.
+The code above and `scripts/run_distributed.py` are unchanged. The LP
+variants are in [`src/fairbattery/lp_variants.py`](src/fairbattery/lp_variants.py)
+and the hard-limit solvers in
+[`src/fairbattery/distributed/hard_limit/`](src/fairbattery/distributed/hard_limit/).
 
 **Simultaneous charging and discharging.** At a negative price, the LP can
 charge 1 kWh and discharge 0.9025 kWh in the same step. The battery ends up
@@ -345,8 +345,8 @@ on the same days, loads and soft limit:
 Net benefit is always reported without the fee. All four schedules have zero
 overload.
 
-![Comparison of the four LP variants](results/distributed/stage0/stage0_comparison.png)
-![One household on a negative-price day](results/distributed/stage0/stage0_example.png)
+![Comparison of the four LP variants](results/distributed/lp_variants/comparison.png)
+![One household on a negative-price day](results/distributed/lp_variants/example_day.png)
 
 **Hard transformer limit.** For the distributed solvers I then dropped the
 overload variable and made the limit a constraint, so zero overload holds by
@@ -380,16 +380,16 @@ converged even though its schedule is within EUR 0.0023 of the optimum.
 ADMM was at least two orders of magnitude more accurate on all three days,
 in far fewer iterations.
 
-![Convergence](results/distributed/complete/figures/convergence.png)
+![Convergence](results/distributed/hard_limit/figures/convergence.png)
 
-Sensitivity on 7 January (2,000-iteration limit, [sensitivity.csv](results/distributed/complete/sensitivity.csv)):
+Sensitivity on 7 January (2,000-iteration limit, [sensitivity.csv](results/distributed/hard_limit/sensitivity.csv)):
 with the diminishing step, $a = 0.01$ met the stopping rule after 1,650
 iterations, while $a = 0.03$ and $a = 0.1$ produced better schedules (gaps
 EUR 0.0013 and 0.000085) but did not close the certificate in time. A
 constant step stalled at EUR 0.0093. For ADMM, $\rho = 0.01$ converged in 50
 iterations and $\rho = 0.1$ in 270, while $\rho = 1$ hit the limit.
 
-![Step size and penalty sensitivity](results/distributed/complete/figures/sensitivity.png)
+![Step size and penalty sensitivity](results/distributed/hard_limit/figures/sensitivity.png)
 
 **Fairness under the hard limit.** Same three days, saving per kWh of
 battery. Proportional fairness maximises $\sum_i \log(S_i/E_i)$, unweighted
@@ -418,7 +418,7 @@ with only the local objectives changed: on 14 May it converged in 640
 iterations, within $8.3 \times 10^{-6}$ of the central log-utility optimum.
 Max-min is only solved centrally.
 
-![Fairness](results/distributed/complete/figures/fairness.png)
+![Fairness](results/distributed/hard_limit/figures/fairness.png)
 
 **Scaling.** 7 January 2025, with synthetic households drawn from the six
 original types and the limit scaled to $11N/6$ kW. Times are for a serial
@@ -438,7 +438,7 @@ the distributed methods serially; the point of the distributed versions is
 that no household has to share its data, not speed on one machine. Each
 iteration costs two messages per household.
 
-![Scaling](results/distributed/complete/figures/scaling.png)
+![Scaling](results/distributed/hard_limit/figures/scaling.png)
 
 Limits of this extension: perfect prices, synthetic loads, a fee that is a
 modelling device rather than a measured battery wear cost, a recovery step
@@ -446,8 +446,8 @@ that needs idle batteries to be feasible, fairness tested on six households
 and three days only, and no network delays. The full list is in
 [theory §17](docs/theory.md#17-limitations-of-part-ii). All results,
 histories and software versions are in
-[results/distributed/stage0/](results/distributed/stage0/) and
-[results/distributed/complete/](results/distributed/complete/).
+[results/distributed/lp_variants/](results/distributed/lp_variants/) and
+[results/distributed/hard_limit/](results/distributed/hard_limit/).
 
 ## Limitations
 
@@ -515,13 +515,13 @@ python scripts/run_distributed.py --quick --out /tmp/distributed   # short check
 The extension with exclusive modes and a hard limit:
 
 ```bash
-python scripts/audit_stage0.py --include-milp   # LP variants and MILP on the 51 test days
-python scripts/reproduce_distributed.py         # dual, ADMM, fairness, scaling and figures
-python scripts/plot_distributed.py              # redraw the figures from stored CSVs only
+python scripts/compare_lp_variants.py --include-milp   # LP variants and MILP on the 51 test days
+python scripts/reproduce_hard_limit.py                # dual, ADMM, fairness, scaling and figures
+python scripts/plot_hard_limit.py                     # redraw the figures from stored CSVs only
 ```
 
 Without `--include-milp` the first script compares the three LPs only.
-`scripts/distributed_experiments.py --skip-scaling` leaves out the scaling
+`scripts/hard_limit_experiments.py --skip-scaling` leaves out the scaling
 runs; the 1,000-household runs took about 7 minutes in total on the recorded
 machine.
 
@@ -532,13 +532,13 @@ Settings are in [configs/default.yaml](configs/default.yaml) and
 
 ```text
 src/fairbattery/    data loading, environment, baselines, agents, metrics, experiment runner
-src/fairbattery/distributed/   dual decomposition, ADMM, fairness objectives, centralised references;
-                               model.py, local.py, algorithms.py, fairness.py: hard-limit extension
-src/fairbattery/stage0_baselines.py   LP with throughput fee and exclusive-mode MILP
+src/fairbattery/lp_variants.py         daily LP with a throughput fee, and the exclusive-mode MILP
+src/fairbattery/distributed/           dual decomposition, ADMM, fairness objectives, centralised references
+src/fairbattery/distributed/hard_limit/   the same with a hard limit: model, local solvers, algorithms, fairness
 docs/theory.md      derivations behind the distributed algorithms
 configs/            default settings and the experiment variants
 scripts/            prepare_data.py, run_experiments.py, make_report.py, reproduce.py, run_distributed.py,
-                    audit_stage0.py, reproduce_distributed.py and the scripts they call
+                    compare_lp_variants.py, reproduce_hard_limit.py and the scripts it calls
 tests/              pytest: data, PettingZoo API, battery physics, LP, metrics, agents
 data/               raw price file, processed inputs, data notes
 results/            per-run JSON, tables (CSV/Markdown) and figures
@@ -568,8 +568,8 @@ Roughly in this order:
 8. **Exclusive modes and a hard limit (November 2026).** The throughput-fee
    and MILP comparison, the hard-limit dual decomposition and ADMM with
    certified stopping, lexicographic max-min fairness and the 1,000-household
-   scaling runs. I wrote this part with the help of an AI assistant; the
-   derivations are in Part II of [docs/theory.md](docs/theory.md).
+   scaling runs. The derivations are in Part II of
+   [docs/theory.md](docs/theory.md).
 
 ## Background
 

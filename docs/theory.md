@@ -3,8 +3,8 @@
 *Part I (Sections 1–6) covers the soft-limit problem behind the results in
 [`results/distributed/`](../results/distributed/). Part II (Sections 7–17)
 covers exclusive battery modes and the hard-limit extension behind
-[`results/distributed/stage0/`](../results/distributed/stage0/) and
-[`results/distributed/complete/`](../results/distributed/complete/).*
+[`results/distributed/lp_variants/`](../results/distributed/lp_variants/) and
+[`results/distributed/hard_limit/`](../results/distributed/hard_limit/).*
 
 ## 1. The problem and its structure
 
@@ -185,14 +185,9 @@ same battery in the same quarter-hour (Section 5), and the transformer limit
 is soft. Part II removes both. Sections 7–11 deal with simultaneous operation
 under the original soft limit. Sections 12–16 then switch to a hard limit and
 derive the distributed solvers and fairness references used for that model.
-The code is in `src/fairbattery/stage0_baselines.py` and the newer modules of
-`src/fairbattery/distributed/` (`centralised.py`, `model.py`, `local.py`,
-`algorithms.py`, `fairness.py`, `datasets.py`); results are in
-`results/distributed/stage0/` and `results/distributed/complete/`.
-
-I wrote this part and the code behind it with the help of an AI assistant.
-The derivations were checked against the implementation and the stored
-results.
+The code is in `src/fairbattery/lp_variants.py` (Sections 7–11) and
+`src/fairbattery/distributed/hard_limit/` (Sections 12–16); results are in
+`results/distributed/lp_variants/` and `results/distributed/hard_limit/`.
 
 The notation follows Part I: price $p_t$ and day-average price $\bar p$ in
 EUR/kWh, load $\ell_{i,t}$, capacity $E_i$, one-way efficiency $\eta = 0.95$,
@@ -327,7 +322,7 @@ stored separately, so a penalised cost is never compared with an
 unpenalised one. Simultaneous operation is counted per household-step,
 because several households can overlap in the same quarter-hour.
 
-Results are in the README and in `results/distributed/stage0/`; full
+Results are in the README and in `results/distributed/lp_variants/`; full
 schedules are stored as `.npz` files. In short, the exclusive MILP gives up
 EUR 0.0017 of benefit over 51 days compared with the LP, so the LP bound used
 for the RL comparison is tight to a fraction of a cent.

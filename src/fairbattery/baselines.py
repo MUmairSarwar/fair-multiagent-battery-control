@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.optimize import Bounds, LinearConstraint, linprog, milp
+from scipy.optimize import linprog
 
 from .data import DT_HOURS, STEPS_PER_DAY
 from .env import IDLE_ACTION, BatteryCommunity
@@ -35,23 +35,16 @@ class PriceRulePolicy:
         return np.repeat(a[:, None], env.n, axis=1)
 
 
-def solve_day_lp(env: BatteryCommunity, b: int, exclusive: bool = False):
-    """Optimal schedule for day `b` of the current batch, knowing all prices and
-    loads in advance. It maximises the same system benefit the other methods
-    are scored on: total saving minus the overload penalty.
+def build_day_lp(env: BatteryCommunity, b: int):
+    """LP coefficients for day `b` of the current batch.
+
+    Minimises minus the total saving plus the overload penalty, with perfect
+    knowledge of the day's prices and loads. Returns ``(cost, A_ub, b_ub,
+    bounds)`` for ``scipy.optimize.linprog``.
 
     Variables per household and step: c (kWh drawn from the grid to charge)
     and d (kWh delivered from the battery to the house). Plus one overload
     variable o per step.
-
-    With `exclusive=False` (the default, used for the published results) this
-    is a linear program. On a few days with zero or negative prices the LP
-    charges and discharges the same battery in the same quarter-hour: it buys
-    extra energy while it is paid to consume and loses it through the
-    conversion losses. A real battery inverter cannot do this, so the LP is a
-    *relaxation*. It is still a valid upper bound for every method here, just
-    slightly loose. With `exclusive=True` one binary variable per household
-    and step forbids it (a mixed-integer program solved with HiGHS).
     """
     n, T = env.n, STEPS_PER_DAY
     eta, cfg = env.eta, env.cfg
@@ -112,43 +105,34 @@ def solve_day_lp(env: BatteryCommunity, b: int, exclusive: bool = False):
         b_ub.append(cfg.transformer_kw * DT_HOURS - load[:, t].sum())
         r += 1
     A = sp.csr_matrix((vals, (rows, cols)), shape=(r, nv))
-    if not exclusive:
-        res = linprog(cost, A_ub=A, b_ub=np.array(b_ub), bounds=bounds, method="highs")
-        if res.status != 0:
-            raise RuntimeError(f"LP failed: {res.message}")
-        x = res.x
-    else:
-        # binary z = 1 allows charging, z = 0 allows discharging:
-        #   c <= cmax * z   and   d <= dmax * (1 - z)
-        nz = n * T
-        lo = np.array([lb for lb, _ in bounds] + [0.0] * nz)
-        hi = np.array([np.inf if ub is None else ub for _, ub in bounds] + [1.0] * nz)
-        zr, zc, zv, zub = [], [], [], []
-        for i in range(n):
-            for t in range(T):
-                k = i * T + t
-                cmax, dmax = hi[ci(i, t)], hi[di(i, t)]
-                zr += [2 * k, 2 * k]
-                zc += [ci(i, t), nv + k]
-                zv += [1.0, -cmax]
-                zub.append(0.0)
-                zr += [2 * k + 1, 2 * k + 1]
-                zc += [di(i, t), nv + k]
-                zv += [1.0, dmax]
-                zub.append(dmax)
-        Z = sp.csr_matrix((zv, (zr, zc)), shape=(2 * nz, nv + nz))
-        A_full = sp.vstack([sp.hstack([A, sp.csr_matrix((A.shape[0], nz))]), Z]).tocsr()
-        ub_full = np.concatenate([np.array(b_ub), np.array(zub)])
-        res = milp(
-            np.concatenate([cost, np.zeros(nz)]),
-            constraints=LinearConstraint(A_full, -np.inf, ub_full),
-            bounds=Bounds(lo, hi),
-            integrality=np.concatenate([np.zeros(nv), np.ones(nz)]),
-            options={"mip_rel_gap": 1e-4, "time_limit": 120},
-        )
-        if res.x is None:
-            raise RuntimeError(f"MILP failed: {res.message}")
-        x = res.x[:nv]
+    return cost, A, np.asarray(b_ub), bounds
+
+
+def solve_day_lp(env: BatteryCommunity, b: int, exclusive: bool = False):
+    """Optimal schedule for day `b` of the current batch, knowing all prices and
+    loads in advance. It maximises the same system benefit the other methods
+    are scored on: total saving minus the overload penalty.
+
+    With `exclusive=False` (the default, used for the published results) this
+    is a linear program. On a few days with zero or negative prices the LP
+    charges and discharges the same battery in the same quarter-hour: it buys
+    extra energy while it is paid to consume and loses it through the
+    conversion losses. A real battery inverter cannot do this, so the LP is a
+    *relaxation*. It is still a valid upper bound for every method here, just
+    slightly loose. With `exclusive=True` one binary variable per household
+    and step forbids it; the MILP is solved by `lp_variants.solve_day`.
+    """
+    if exclusive:
+        from .lp_variants import solve_day
+
+        result = solve_day(env, b, exclusive=True, mip_rel_gap=1e-4, time_limit=120.0)
+        return result.charge, result.discharge
+    n, T = env.n, STEPS_PER_DAY
+    cost, A, b_ub, bounds = build_day_lp(env, b)
+    res = linprog(cost, A_ub=A, b_ub=b_ub, bounds=bounds, method="highs")
+    if res.status != 0:
+        raise RuntimeError(f"LP failed: {res.message}")
+    x = res.x
     c = x[: n * T].reshape(n, T)
     d = x[n * T : 2 * n * T].reshape(n, T)
     return c, d

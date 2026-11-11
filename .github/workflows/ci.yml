@@ -29,3 +29,9 @@ jobs:
         run: python scripts/run_experiments.py --quick
       - name: Short distributed-optimisation run
         run: python scripts/run_distributed.py --quick --out /tmp/distributed
+      - name: LP variants on the 51 test days (without the MILP)
+        run: python scripts/compare_lp_variants.py --out /tmp/lp_variants
+      - name: Short hard-limit run and figures from stored results
+        run: |
+          python scripts/hard_limit_experiments.py --only-scaling --sizes 6 --out /tmp/hard_limit
+          python scripts/plot_hard_limit.py
