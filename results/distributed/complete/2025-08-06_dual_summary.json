@@ -1,0 +1,21 @@
+{
+  "tag": "2025-08-06_dual",
+  "algorithm": "dual",
+  "n": 6,
+  "T": 96,
+  "iterations": 2590,
+  "runtime_seconds": 5.100973930000009,
+  "converged": true,
+  "objective_gap": 0.0020903544672243868,
+  "objective_gap_per_agent": 0.00034839241120406445,
+  "relative_objective_gap": 0.0005636382929171007,
+  "messages_per_agent": 5180,
+  "scalars_per_agent": 505050,
+  "objective": -3.7065903606165422,
+  "max_capacity_violation_kw": 1.7763568394002505e-15,
+  "local_violation_kwh": 1.7763568394002505e-15,
+  "overlap_steps": 0,
+  "step": 0.01,
+  "max_iter": 3000,
+  "tol": 0.0005
+}

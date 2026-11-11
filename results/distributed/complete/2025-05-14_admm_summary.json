@@ -1,0 +1,21 @@
+{
+  "tag": "2025-05-14_admm",
+  "algorithm": "admm",
+  "n": 6,
+  "T": 96,
+  "iterations": 150,
+  "runtime_seconds": 1.3292047559999673,
+  "converged": true,
+  "objective_gap": 6.123363928800529e-06,
+  "objective_gap_per_agent": 1.0205606548000883e-06,
+  "relative_objective_gap": 1.309003917626126e-06,
+  "messages_per_agent": 300,
+  "scalars_per_agent": 29250,
+  "objective": -4.677874398113217,
+  "max_capacity_violation_kw": 0.0,
+  "local_violation_kwh": 2.7290941879698494e-06,
+  "overlap_steps": 0,
+  "rho": 0.1,
+  "max_iter": 2000,
+  "tol": 1e-05
+}

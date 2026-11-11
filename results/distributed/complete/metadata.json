@@ -1,0 +1,23 @@
+{
+  "seed": 2025,
+  "dates": [
+    "2025-01-07",
+    "2025-05-14",
+    "2025-08-06"
+  ],
+  "model": "hard capacity; sufficient throughput fee; terminal mean-price valuation",
+  "capacity_scaling": "11*N/6 kW",
+  "execution": "serial simulation of separate household solvers",
+  "versions": {
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "scipy": "1.17.0",
+    "cvxpy": "1.9.3",
+    "highspy": "1.15.1",
+    "osqp": "1.1.3"
+  },
+  "input_sha256": "c511554f42657cf7a89ca0bea7b92d9c4496d54a930fda22348f35dc883422dd",
+  "dual_stopping": "feasible primal minus best dual <= tol*N EUR",
+  "admm_stopping": "primal RMS and dual RMS <= tol; objective gap independently reported",
+  "communication": "two logical messages per agent per iteration, 2*T+3 scalars; diagnostics included; no network timing"
+}
