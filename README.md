@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml/badge.svg)](https://github.com/MUmairSarwar/fair-multiagent-battery-control/actions/workflows/ci.yml)
 
-I worked on this from May to October 2026 on my laptop and pushed it to
+I worked on this from August to October 2026 on my laptop and pushed it to
 GitHub in October 2026, so the commit history is short; the steps are listed
 under [How the project developed](#how-the-project-developed). A
 [distributed-optimisation part](#distributed-optimisation-added-november-2026)
@@ -547,8 +547,8 @@ results/            per-run JSON, tables (CSV/Markdown) and figures
 
 ## How the project developed
 
-I started in May 2026 and worked on it alongside other things until October.
-Roughly in this order:
+I started in August 2026 and worked on it until October 2026. The final
+energy-data snapshot was taken in October. Roughly in this order:
 
 1. **Data.** Getting the 2025 day-ahead prices, checking them against SMARD,
    and handling the switch from hourly to 15-minute prices on 1 Oct 2025.
