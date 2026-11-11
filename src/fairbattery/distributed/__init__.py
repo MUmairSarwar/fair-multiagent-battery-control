@@ -5,6 +5,7 @@
 - `centralized`: one-solver reference solutions (efficient, proportional, max-min)
 - `dual`: dual decomposition with a congestion price
 - `admm`: ADMM for the sharing problem, with an optional fairness objective
+- `hard_limit`: the extension with a hard transformer limit (separate subpackage)
 """
 
 from .admm import sharing_admm

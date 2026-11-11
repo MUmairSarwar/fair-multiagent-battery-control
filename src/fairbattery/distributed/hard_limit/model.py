@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 import scipy.sparse as sp
 from scipy.optimize import linprog
-from .centralised import sufficient_throughput_cost
+from ...lp_variants import sufficient_throughput_cost
 
 
 @dataclass
@@ -72,10 +72,10 @@ class DayProblem:
         return x@self.cost
 
     def clean(self,x):
-        """Remove SOC-neutral overlap; justified only with sufficient fee.
+        """Remove simultaneous charge and discharge without changing stored energy.
 
-        This is local postprocessing, not another optimizer. It preserves the
-        battery energy trajectory and lowers import and the penalized cost.
+        Only applied when the fee is sufficient, because only then is the
+        cost guaranteed to fall (theory, Section 9). Grid import falls too.
         """
         x=x.copy();T=self.T
         if self.fee+1e-12 < sufficient_throughput_cost(self.prices,self.eta,margin=1e-12):
@@ -87,10 +87,10 @@ class DayProblem:
         return x
 
     def recover(self,x):
-        """Purify and blend with idle to restore hard capacity, if idle is feasible.
+        """Clean ``x`` and blend it with the idle schedule until the hard limit holds.
 
-        Each household can apply the coordinator's one scalar blend locally.
-        No centralized optimization or reference optimum is used here.
+        Returns the schedule and the blend factor, the only number the
+        coordinator has to broadcast. Requires the idle schedule to be feasible.
         """
         x=self.clean(x)
         baseline=self.loads.sum(axis=0)
@@ -116,7 +116,7 @@ class DayProblem:
 
 
 def central_lp(problem: DayProblem):
-    """Sparse SciPy LP ground truth, including fee and hard transformer limit."""
+    """Central reference: sparse HiGHS LP with the throughput fee and the hard limit."""
     parts=[problem.local(i) for i in range(problem.n)]
     Aeq=sp.block_diag([p[0] for p in parts],format='csc')
     beq=np.concatenate([p[1] for p in parts]);ub=np.concatenate([p[2] for p in parts])
@@ -129,7 +129,7 @@ def central_lp(problem: DayProblem):
 
 
 def cvxpy_model(problem):
-    """Independent CVXPY formulation used for verification and fairness."""
+    """Separate CVXPY formulation, used to check the LP and for the fairness models."""
     import cvxpy as cp
     n,T=problem.n,problem.T
     c=cp.Variable((n,T),nonneg=True);d=cp.Variable((n,T),nonneg=True)

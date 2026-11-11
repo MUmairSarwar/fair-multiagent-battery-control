@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
-from fairbattery.distributed.datasets import scenario
-from fairbattery.distributed.model import DayProblem,central_lp,central_cvxpy
-from fairbattery.distributed.algorithms import dual_decomposition,sharing_admm
-from fairbattery.distributed.fairness import solve_fair,metrics
+from fairbattery.distributed.hard_limit.datasets import scenario
+from fairbattery.distributed.hard_limit.model import DayProblem,central_lp,central_cvxpy
+from fairbattery.distributed.hard_limit.algorithms import dual_decomposition,sharing_admm
+from fairbattery.distributed.hard_limit.fairness import solve_fair,metrics
 
 @pytest.mark.parametrize('date',['2025-01-07','2025-05-14','2025-08-06'])
 def test_independent_central_formulations_agree(date):
@@ -37,8 +37,8 @@ def test_dual_averaging_and_recovery_match_cvxpy():
 
 def test_recovery_preserves_soc_and_restores_capacity():
     p=scenario();x=p.idle();T=p.T
-    # A genuine locally feasible but coupled-infeasible schedule from local LPs.
-    from fairbattery.distributed.local import HouseholdLP
+    # Household LP solutions that are each feasible but jointly exceed the limit.
+    from fairbattery.distributed.hard_limit.local import HouseholdLP
     x=np.stack([HouseholdLP(p,i).solve(np.zeros(T))[0] for i in range(p.n)])
     y,a=p.recover(x)
     assert 0<=a<=1
@@ -79,7 +79,7 @@ def test_idle_infeasible_recovery_fails_explicitly():
 
 
 def test_distributed_log_savings_matches_central_reference():
-    from fairbattery.distributed.fairness import distributed_proportional
+    from fairbattery.distributed.hard_limit.fairness import distributed_proportional
     p=scenario(date='2025-05-14');x,_=solve_fair(p,'proportional')
     r=distributed_proportional(p,rho=.1,max_iter=2000,tol=1e-6)
     central=np.log(-p.costs(x)/p.capacities).sum()

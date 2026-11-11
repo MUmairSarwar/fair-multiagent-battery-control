@@ -1,4 +1,4 @@
-"""Private household oracles. No oracle receives another household's data."""
+"""Household subproblems. Each solver only sees its own household's data."""
 import numpy as np
 import scipy.sparse as sp
 import highspy
@@ -53,7 +53,7 @@ class HouseholdQP:
 
 
 class HouseholdLogQP:
-    """Private logarithmic-savings proximal oracle for fair sharing ADMM."""
+    """Local step of proportional-fair ADMM: minus log saving plus the ADMM penalty."""
     def __init__(self,problem,i,rho):
         import cvxpy as cp
         self.cp=cp;self.T=problem.T;self.cost=problem.cost;self.load=problem.loads[i].copy()

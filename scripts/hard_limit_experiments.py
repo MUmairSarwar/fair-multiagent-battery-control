@@ -1,4 +1,4 @@
-"""Run Stages 1-4 with fixed seeds; produces measured results, not synthetic timings."""
+"""Run the hard-limit experiments (dual, ADMM, sensitivity, fairness, scaling) with fixed seeds."""
 import argparse,json,sys,platform,hashlib
 from pathlib import Path
 from time import perf_counter
@@ -6,10 +6,10 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'src'))
 import numpy as np
 import pandas as pd
 import scipy,cvxpy,highspy,osqp
-from fairbattery.distributed.datasets import scenario
-from fairbattery.distributed.model import central_lp,central_cvxpy
-from fairbattery.distributed.algorithms import dual_decomposition,sharing_admm
-from fairbattery.distributed.fairness import solve_fair,metrics
+from fairbattery.distributed.hard_limit.datasets import scenario
+from fairbattery.distributed.hard_limit.model import central_lp,central_cvxpy
+from fairbattery.distributed.hard_limit.algorithms import dual_decomposition,sharing_admm
+from fairbattery.distributed.hard_limit.fairness import solve_fair,metrics
 from fairbattery import data
 
 
@@ -33,7 +33,7 @@ def record_run(p,method,reference,tag,out,**kwargs):
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('--out',type=Path,default=data.REPO_ROOT/'results'/'distributed'/'complete')
+    ap.add_argument('--out',type=Path,default=data.REPO_ROOT/'results'/'distributed'/'hard_limit')
     ap.add_argument('--sizes',type=int,nargs='+',default=[6,100,1000])
     ap.add_argument('--skip-scaling',action='store_true')
     ap.add_argument('--only-scaling',action='store_true')
@@ -62,7 +62,7 @@ def main():
         p=scenario();_,reference=central_lp(p);sweep=[]
         for step in [.01,.03,.1]:
             sweep.append(record_run(p,'dual',reference,f'dual_step_{step}',out,step=step,max_iter=2000,tol=5e-4))
-        # A constant step is a deliberate non-convergent comparator, honestly labelled.
+        # Constant step for comparison only; it is not expected to converge exactly.
         sweep.append(record_run(p,'dual',reference,'dual_constant_0.03',out,step=.03,rule='constant',max_iter=2000,tol=5e-4))
         for rho in [.01,.1,1.]:
             sweep.append(record_run(p,'admm',reference,f'admm_rho_{rho}',out,rho=rho,max_iter=2000,tol=1e-5))

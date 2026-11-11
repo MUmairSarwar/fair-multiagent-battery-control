@@ -1,7 +1,10 @@
 # Theory notes: distributed and fair scheduling behind a shared transformer
 
-*The results these notes refer to are in
-[`results/distributed/`](../results/distributed/).*
+*Part I (Sections 1–6) covers the soft-limit problem behind the results in
+[`results/distributed/`](../results/distributed/). Part II (Sections 7–17)
+covers exclusive battery modes and the hard-limit extension behind
+[`results/distributed/lp_variants/`](../results/distributed/lp_variants/) and
+[`results/distributed/hard_limit/`](../results/distributed/hard_limit/).*
 
 ## 1. The problem and its structure
 
@@ -175,6 +178,420 @@ MILP). Over the 51 test days the difference is a fraction of a cent (see
 - The scaling study uses synthetic copies of the six household types.
 - Synchronous rounds, no communication delays or dropped messages.
 
+# Part II. Exclusive battery modes and a hard transformer limit
+
+Part I left two simplifications in place. The LP may charge and discharge the
+same battery in the same quarter-hour (Section 5), and the transformer limit
+is soft. Part II removes both. Sections 7–11 deal with simultaneous operation
+under the original soft limit. Sections 12–16 then switch to a hard limit and
+derive the distributed solvers and fairness references used for that model.
+The code is in `src/fairbattery/lp_variants.py` (Sections 7–11) and
+`src/fairbattery/distributed/hard_limit/` (Sections 12–16); results are in
+`results/distributed/lp_variants/` and `results/distributed/hard_limit/`.
+
+The notation follows Part I: price $p_t$ and day-average price $\bar p$ in
+EUR/kWh, load $\ell_{i,t}$, capacity $E_i$, one-way efficiency $\eta = 0.95$,
+overload penalty $\pi = 0.5$ EUR/kWh.
+
+## 7. Units and the original model
+
+The code measures charge $c_{i,t}$, discharge $d_{i,t}$ and load
+$\ell_{i,t}$ in kWh per quarter-hour, not in kW. With $\Delta t = 0.25$ h, a
+2 kW charge is $c_{i,t} = 0.5$ kWh, and the 11 kW transformer limit becomes
+$h = 2.75$ kWh per step. With stored energy $e_{i,t}$ and grid import
+$g_{i,t}$,
+
+$$
+e_{i,t+1} = e_{i,t} + \eta c_{i,t} - d_{i,t}/\eta,\qquad
+g_{i,t} = \ell_{i,t} + c_{i,t} - d_{i,t},
+$$
+
+$$
+0 \le c_{i,t} \le \bar c_i,\qquad
+0 \le d_{i,t} \le \min(\bar c_i, \ell_{i,t}),\qquad
+0 \le e_{i,t} \le E_i,
+$$
+
+with $\bar c_i$ the maximum energy per step and $e_{i,0} = E_i/2$. The
+original transformer constraint is soft, $\sum_i g_{i,t} \le h + o_t$ with
+$o_t \ge 0$, and the cost to minimise is
+
+$$
+J(c, d, o) = \sum_{i,t}\Big[p_t (c_{i,t} - d_{i,t}) - \bar p\,(\eta c_{i,t} - d_{i,t}/\eta)\Big] + \pi \sum_t o_t .
+$$
+
+The second term values the change in stored energy at the day-average price.
+The cost without a battery is a constant and drops out.
+
+## 8. Why the LP charges and discharges at once
+
+Nothing in the LP forces $c_{i,t} d_{i,t} = 0$. Increase both in the same
+step by $\Delta c = \delta$ and $\Delta d = \eta^2 \delta$. The stored energy
+does not change, $\eta\delta - \eta^2\delta/\eta = 0$, so the valuation term
+does not change either, but grid import rises by $(1-\eta^2)\delta$. The
+energy cost changes by $p_t(1-\eta^2)\delta$, which is negative when
+$p_t < 0$: the battery wastes energy in conversion losses and the household
+is paid to import it. At $p_t = 0$ the loop costs nothing, so the solver may
+return it as one of several optima.
+
+For $\eta = 0.95$, charging 1 kWh and discharging 0.9025 kWh leaves the
+battery as it was and absorbs 0.0975 kWh. At $-0.03$ EUR/kWh that earns
+0.002925 EUR. A negative price is necessary for a strict gain but not
+sufficient: the loop also needs spare power and, under the soft limit, must
+not push the transformer into a costly overload.
+
+On the 51 test days the LP does this in 212 of 29,376 household-steps
+(208 at negative prices, 4 at zero), spread over 70 distinct quarter-hours.
+
+## 9. A throughput fee, and when it is enough
+
+Add a fee $\kappa \sum_{i,t}(c_{i,t} + d_{i,t})$, in EUR per kWh of
+throughput. The loop above now changes the cost by
+
+$$
+\delta\big[p_t (1-\eta^2) + \kappa (1+\eta^2)\big],
+$$
+
+so a small fee removes the zero-price ties but not necessarily the
+negative-price loops.
+
+**Proposition.** If
+
+$$
+\kappa > \max_t \max(0, -p_t)\,\frac{1-\eta^2}{1+\eta^2},
+$$
+
+no optimal solution of the LP with fee has $c_{i,t} > 0$ and
+$d_{i,t} > 0$ in the same step.
+
+*Proof.* Suppose $c_{i,t}, d_{i,t} > 0$ and let
+$\delta = \min(c_{i,t}, d_{i,t}/\eta^2) > 0$. Replace $c_{i,t}$ by
+$c_{i,t} - \delta$ and $d_{i,t}$ by $d_{i,t} - \eta^2\delta$. Both stay
+non-negative and below their upper bounds, and every $e_{i,t}$ is unchanged.
+Grid import falls by $(1-\eta^2)\delta$ but stays non-negative, because
+$g_{i,t} = \ell_{i,t} + c_{i,t} - d_{i,t} \ge c_{i,t} \ge 0$ follows from
+$d_{i,t} \le \ell_{i,t}$. The transformer constraint only bounds the sum of
+imports from above, so it still holds with the same $o_t$. The cost changes
+by $-\delta[p_t(1-\eta^2) + \kappa(1+\eta^2)]$, and the bracket is positive:
+for $p_t \ge 0$ because $\kappa > 0$, and for $p_t < 0$ by the bound on
+$\kappa$. The new point is feasible and strictly cheaper, so the original
+point was not optimal. $\square$
+
+The argument uses the structure of this model: upper bounds on import only,
+no minimum import, no export and no equality on the grid exchange. With
+rooftop PV that must be absorbed, for example, it would need to be redone.
+The fee also changes the problem itself, because it makes useful
+charge-discharge arbitrage more expensive too. The code uses the bound plus
+a margin of $10^{-6}$. Over the 51 test days the most negative price is
+about $-31.8$ EUR/MWh, which gives $\kappa \approx 0.00163$ EUR/kWh.
+
+## 10. Exclusive modes as a MILP
+
+The exact fix is one binary $z_{i,t} \in \{0, 1\}$ per household and step:
+
+$$
+0 \le c_{i,t} \le \bar c_i\, z_{i,t},\qquad
+0 \le d_{i,t} \le \min(\bar c_i, \ell_{i,t})\,(1 - z_{i,t}).
+$$
+
+$z = 1$ allows charging, $z = 0$ allows discharging, and idling is possible
+in both. The big-M constants are the physical bounds that already exist, so
+the formulation is as tight as it can be without extra cuts. Everything else
+is unchanged, including the objective without a fee. Since the LP is a
+relaxation of this MILP, $J_{\mathrm{LP}} \le J_{\mathrm{MILP}}$, i.e. the
+LP's benefit is an upper bound on the MILP's.
+
+The MILP is solved per day with SciPy's HiGHS interface, a relative MIP gap
+of $10^{-5}$ and a 60-second time limit. A time-limited or failed solve
+raises an error instead of returning an incumbent as if it were optimal;
+the largest gap recorded over the 51 days is $9.8 \times 10^{-6}$. A gap of
+$10^{-9}$ ran into the time limit on one negative-price day. After the
+solve, exclusivity is checked with a tolerance of $10^{-6}$ kWh. The MILP
+still uses continuous power, while the RL agents choose from five levels, so
+it remains a stronger controller class than the agents.
+
+## 11. How the variants are compared
+
+The original LP, the LP with a small fee (0.0001 EUR/kWh), the LP with the
+sufficient fee from Section 9 and the exclusive MILP are solved on the same
+51 test days, with the same noisy loads (seed 2025, sampled once), batteries,
+soft overload penalty, initial state and end-of-day valuation. Each schedule
+is replayed through the environment's accounting. The reported net benefit
+never includes the throughput fee; the minimised objective with the fee is
+stored separately, so a penalised cost is never compared with an
+unpenalised one. Simultaneous operation is counted per household-step,
+because several households can overlap in the same quarter-hour.
+
+Results are in the README and in `results/distributed/lp_variants/`; full
+schedules are stored as `.npz` files. In short, the exclusive MILP gives up
+EUR 0.0017 of benefit over 51 days compared with the LP, so the LP bound used
+for the RL comparison is tight to a fraction of a cent.
+
+## 12. The hard-capacity model used for the distributed solvers
+
+From here on the overload variable is dropped and the limit is a constraint,
+
+$$
+\sum_i g_{i,t} \le h_t \quad \forall t .
+$$
+
+There are two reasons. Zero overload then holds by construction rather than
+being an outcome of the penalty. And, as Part I showed, the soft limit
+restricts the dual price to $0 \le \lambda \le \pi$, which is easy to get
+wrong; with a hard limit the dual feasible set is simply $\lambda \ge 0$.
+
+Write $x_i = (c_i, d_i, e_i) \in \mathbb{R}^{3T}$, let $\mathcal{X}_i$ be the
+household's polytope from Section 7, and $g_i(x_i) = \ell_i + c_i - d_i$.
+Each day uses its own sufficient fee $\kappa_d$ from that day's minimum
+price, so the local cost is linear, $f_i(x_i) = w^\top x_i$ with
+
+$$
+w = \big(p - \bar p\,\eta + \kappa_d,\;\; -p + \bar p/\eta + \kappa_d,\;\; 0\big).
+$$
+
+The reference problem is
+
+$$
+P^\star = \min_{x_i \in \mathcal{X}_i}\; \sum_i f_i(x_i)
+\quad\text{s.t.}\quad \sum_i g_i(x_i) \le h .
+$$
+
+All numbers in Sections 13–16 refer to this problem and are not comparable
+with the soft-limit results of Part I or Sections 7–11. The central reference
+is a sparse HiGHS LP with explicit state-of-charge variables, which keeps the
+matrix at $O(NT)$ nonzeros instead of the $O(NT^2)$ of the cumulative-sum
+formulation in Part I. It agrees with an independent CVXPY/Clarabel model to
+within $3 \times 10^{-9}$ EUR on the three test dates (7 January, 14 May and
+6 August 2025).
+
+The MILP of Section 10 is not used here. LP duality and the ADMM convergence
+theory below do not apply to binary variables. The sufficient fee is what
+makes the convex model free of simultaneous operation.
+
+## 13. Dual decomposition with primal recovery
+
+**Dual function.** With $\lambda \in \mathbb{R}^T_{\ge 0}$,
+
+$$
+q(\lambda) = \sum_i \min_{x_i \in \mathcal{X}_i}\big[f_i(x_i) + \lambda^\top g_i(x_i)\big] - \lambda^\top h .
+$$
+
+Each inner problem is a small LP that needs only the household's own data
+and the price vector: $\lambda_t$ is added to the charging cost and
+subtracted from the discharging cost. The constant $\lambda^\top \ell_i$ does
+not change the minimiser but must be included when $q(\lambda)$ is
+evaluated.
+
+**Strong duality.** The problem is a feasible LP (idle batteries fit under
+the limit on every scenario used) with bounded variables, so it has a finite
+optimum and LP duality gives $\max_{\lambda \ge 0} q(\lambda) = P^\star$.
+No Slater condition is needed for this.
+
+**Update.** A supergradient of the concave $q$ at $\lambda^k$ is the
+constraint residual $s^k = \sum_i g_i(x_i^k) - h$, which gives
+
+$$
+\lambda^{k+1} = \big[\lambda^k + \alpha_k s^k\big]_+,\qquad
+\alpha_k = \frac{a}{N k^{0.6}} .
+$$
+
+$\lambda$ is in EUR/kWh and $s$ in kWh, so $\alpha_k$ is in EUR/kWh². The
+steps satisfy $\sum_k \alpha_k = \infty$ and $\sum_k \alpha_k^2 < \infty$,
+the usual conditions for convergence of the dual iterates. A constant step
+is included only as a comparison and is not expected to converge exactly. A
+Polyak-type step is available as an option; it uses the best feasible cost
+found so far instead of $P^\star$, and I make no convergence claim for it.
+
+**Averaging.** The household responses are vertices of $\mathcal{X}_i$ and
+jump when $\lambda$ crosses a breakpoint, so the last iterate can overload
+the transformer even when $\lambda$ is nearly optimal. The code therefore
+also tracks the step-weighted average
+$\bar x^k = \sum_{j \le k} \alpha_j x^j / \sum_{j \le k} \alpha_j$, which
+stays in each $\mathcal{X}_i$ by convexity, and a second average over the
+last half of the iteration budget only, which forgets the early transient.
+
+**Recovery of a feasible schedule.** An average can still violate the limit
+slightly after finitely many steps. Each candidate (last iterate and the
+averages) is first cleaned of simultaneous operation with the step from the
+proof in Section 9, which lowers cost and import. It is then blended with
+the idle schedule $x^0$. With idle load $b = \sum_i \ell_i$ and candidate
+load $y = \sum_i g_i(\bar x_i)$,
+
+$$
+\beta = \min\Big(1,\; \min_{t:\, y_t > b_t} \frac{h_t - b_t}{y_t - b_t}\Big),\qquad
+\hat x_i = x_i^0 + \beta\,(\bar x_i - x_i^0).
+$$
+
+Since $\sum_i g_i$ is affine in $x$, the blended load is
+$b + \beta(y - b) \le h$, and $\hat x_i \in \mathcal{X}_i$ as a convex
+combination. The coordinator only needs to broadcast $\beta$. This requires
+the idle schedule to be feasible ($b \le h$); the code raises an error
+otherwise. That is a restriction of the recovery step, not of the duality
+argument.
+
+**Stopping.** The best recovered cost $P_{\text{best}}$ is an upper bound on
+$P^\star$ and the best $q(\lambda^k)$ is a lower bound. The algorithm stops
+when $P_{\text{best}} - \max_k q(\lambda^k) \le N \cdot \text{tol}$ EUR, so
+the stopping rule itself certifies the objective gap. The central optimum is
+used only for plots and error reporting.
+
+## 14. Sharing ADMM
+
+**Splitting.** Give each household an allocation $z_i \in \mathbb{R}^T$ and
+let $\mathcal{C} = \{z : \sum_i z_{i,t} \le h_t\ \forall t\}$:
+
+$$
+\min_{x_i \in \mathcal{X}_i,\, z}\; \sum_i f_i(x_i) + \iota_{\mathcal{C}}(z)
+\quad\text{s.t.}\quad g_i(x_i) - z_i = 0 .
+$$
+
+This is a two-block problem in the sense of Boyd et al. (2011, §7.3): all
+$x_i$ together form one block, which separates by household, and $z$ forms
+the other. The scaled-form iteration is
+
+$$
+x_i^{k+1} = \arg\min_{x_i \in \mathcal{X}_i}\; f_i(x_i) + \frac{\rho}{2}\big\|g_i(x_i) - z_i^k + u_i^k\big\|_2^2,
+$$
+
+a small convex QP per household, solved with a warm-started OSQP model.
+
+**Coordinator step.** With $v_i = g_i(x_i^{k+1}) + u_i^k$, the $z$-update is
+the Euclidean projection of $v$ onto $\mathcal{C}$. For each $t$ this is a
+projection onto the half-space $\sum_i z_{i,t} \le h_t$, whose normal is the
+all-ones vector, so every component is shifted by the same amount:
+
+$$
+\delta_t = \Big[\tfrac{1}{N}\Big(\sum_i v_{i,t} - h_t\Big)\Big]_+,\qquad
+z_i^{k+1} = v_i - \delta .
+$$
+
+$z_i \ge 0$ is not imposed; an allocation may be negative during the
+iteration, while the physical imports $g_i$ stay non-negative through the
+household constraints. The multiplier update is
+
+$$
+u_i^{k+1} = u_i^k + g_i(x_i^{k+1}) - z_i^{k+1} = v_i - z_i^{k+1} = \delta ,
+$$
+
+and since $u$ starts at zero, all households always share the same multiplier. The
+coordinator receives the aggregate import and broadcasts the single vector
+$\delta$, from which each household can form its own $z_i$ and $u_i$. Nobody
+receives another household's load or battery parameters. This is a
+separation of data, not a privacy guarantee: schedules still reveal
+something about loads.
+
+**Residuals.** In the form $Ax + Bz = c$ of Boyd et al., $A$ is block
+diagonal with blocks $G = [I, -I, 0]$ and $B = -I$. The primal residual is
+$r_i = g_i(x_i) - z_i$ and the dual residual is
+
+$$
+s_i = \rho\, G^\top (z_i^{k+1} - z_i^k) = \rho\,(\Delta z_i, -\Delta z_i, 0),
+$$
+
+up to sign. Using $\rho\|\Delta z\|$ alone would drop the factor $G^\top$.
+The code stops when both RMS values, $\|r\|/\sqrt{NT}$ and
+$\|s\|/\sqrt{3NT}$, are below a fixed tolerance. These residuals do not
+bound the objective gap directly, so the gap against the central LP is
+reported separately, and the final schedule goes through the same cleaning
+and idle blending as in Section 13.
+
+**Convergence.** The $f_i$ plus the indicators of $\mathcal{X}_i$, and
+$\iota_{\mathcal{C}}$, are closed, proper and convex, and the feasible LP has
+a saddle point. Standard two-block ADMM theory (Boyd et al. 2011, §3.2) then
+gives convergence of the residuals and the objective for any $\rho > 0$,
+assuming exact subproblem solves. OSQP solves them to a finite tolerance,
+which is one more reason to check feasibility and the gap numerically. The
+optimal schedule need not be unique, so the tests compare objective values
+and feasibility rather than arrays.
+
+## 15. Fairness with a hard limit
+
+Let $S_i = -f_i(x_i)$ be household $i$'s daily saving relative to an idle
+battery (including the fee and the end-of-day valuation) and
+$q_i = S_i / E_i$ its saving per kWh of battery. All fairness models impose
+$S_i \ge 0$, so no household is made worse off than with an idle battery.
+
+- **Efficient:** maximise $\sum_i S_i$.
+- **Proportional:** maximise $\sum_i \log q_i$. Since
+  $\log q_i = \log S_i - \log E_i$, this has the same maximiser as
+  $\sum_i \log S_i$. At the optimum $q^\star$,
+  $\sum_i (q_i - q_i^\star)/q_i^\star \le 0$ for every feasible positive $q$
+  (Kelly et al. 1998).
+- **Max-min:** maximise the sorted vector of $q_i$ lexicographically.
+
+The proportional objective here is unweighted and has no offset. Part I
+(Section 4) used $\sum_i E_i \log(u_i + \varepsilon)$, a capacity-weighted
+variant with $\varepsilon = 10^{-3}$, under the soft limit. The two
+objectives are different, so their results are not directly comparable.
+Because there is no offset, the code first solves a max-min LP to check that
+every household can get a strictly positive saving and raises an error if
+not. The log arguments are divided by that achievable floor for numerical
+conditioning, which only adds a constant.
+
+Max-min is computed by progressive freezing: maximise a common floor over the
+households not yet fixed, find those that cannot exceed it on the optimal
+face, fix them at that level (tolerance $2 \times 10^{-7}$ EUR/kWh; a
+household counts as blocked if it cannot gain more than ten times that), and
+repeat with the rest. A final LP picks the most efficient schedule among the
+lexicographically fair ones. This pins down every household's level, not
+just the smallest one.
+
+The reported measures are Jain's index, the smallest $q_i$ and the price of
+fairness,
+
+$$
+J(q) = \frac{(\sum_i q_i)^2}{N \sum_i q_i^2},\qquad
+q_{\min} = \min_i q_i,\qquad
+\mathrm{PoF} = \frac{\sum_i S_i^{\text{eff}} - \sum_i S_i^{\text{fair}}}{\sum_i S_i^{\text{eff}}} .
+$$
+
+$J$ is undefined when all $q_i = 0$ and PoF when the efficient saving is not
+positive; the code returns no value in those cases. Proportional fairness
+does not guarantee a higher $J$ or a higher $q_{\min}$, and on these three
+days it lowers $J$ slightly.
+
+**Distributed proportional fairness.** The sharing ADMM of Section 14 works
+unchanged if the local linear cost is replaced by $-\log(S_i/E_i)$; each
+household then solves a convex log-plus-quadratic problem (CVXPY with
+Clarabel, and SCS as a fallback when Clarabel does not return an optimal
+status). Each household scales its log argument by its own best attainable
+saving, which again only adds a constant. Max-min is
+only computed centrally, as a reference.
+
+## 16. Scaling and message counting
+
+The scaling runs use the same H0 profile and load noise as the rest of the
+project. Six households use the original parameters. For $N = 100$ and
+$N = 1000$, annual consumption is drawn from the six original levels and
+battery size from $\{5, 7.5, 10\}$ kWh (parameter seed 2042, load seed 2025),
+and the limit is scaled to $11N/6$ kW. Keeping 11 kW for 1,000 homes would
+make the problem infeasible rather than larger. The horizon is always
+96 steps, and the scaling date is fixed (7 January 2025).
+
+Runtimes are wall-clock times of a serial simulation, including setting up
+the local solvers. They do not measure a real network or parallel speed-up.
+Each iteration counts as two messages per household: one up (a $T$-vector
+and a cost value) and one down (a $T$-vector plus a few scalars), budgeted
+as $2T + 3$ numbers. Total traffic is therefore $2Nk$ messages after $k$
+iterations. Every run records whether it met its stopping rule; a run that
+hits the iteration limit is reported as not converged, whatever its
+objective gap.
+
+## 17. Limitations of Part II
+
+- Perfect day-ahead prices and loads, synthetic H0 households, and a daily
+  reset to half-full batteries with end-of-day valuation.
+- The throughput fee is a modelling device, not a calibrated degradation
+  cost, and the hard-limit results include it.
+- The recovery step needs idle batteries to be feasible.
+- One aggregate transformer limit with no voltages, reactive power or line
+  losses; no export.
+- Finite solver tolerances throughout; the MILP is certified only to its
+  recorded MIP gap.
+- Max-min fairness is a central reference only, and the fairness study covers
+  six households on three days.
+- Serial timing, synchronous rounds, no delays or lost messages.
+
 ## References
 
 - S. Boyd, N. Parikh, E. Chu, B. Peleato, J. Eckstein (2011). Distributed optimization and statistical learning via the alternating direction method of multipliers. *Foundations and Trends in Machine Learning* 3(1).
@@ -184,501 +601,4 @@ MILP). Over the 51 test days the difference is a fraction of a cent (see
 - J. Mo, J. Walrand (2000). Fair end-to-end window-based congestion control. *IEEE/ACM Trans. Networking* 8(5).
 - F. Kelly, A. Maulloo, D. Tan (1998). Rate control for communication networks: shadow prices, proportional fairness and stability. *J. Operational Research Society* 49.
 - D. Bertsimas, V. Farias, N. Trichakis (2011). The price of fairness. *Operations Research* 59(1).
-
-
----
-
-# Distributed optimization: model and derivations
-
-**Authorship status:** AI-assisted learning draft, not yet an independently
-written author derivation. Muhammad Umair Sarwar should verify each argument
-and rewrite it in his own words before describing the derivations as authored
-by him. The implementation was built with AI assistance.
-
-Stages 0–4 are implemented. The sections follow the learning sequence, with
-explicit distinctions between the historical soft limit and the new hard limit.
-
-## 1. What the existing variables mean
-
-Let i denote a household and t a quarter-hour. The existing code measures
-charge c_it, discharge d_it and load l_it in **kWh per interval**, not kW.
-The interval length is Delta t = 0.25 hours. Thus a 2 kW charge over one
-interval is c_it = 0.5 kWh. The shared 11 kW limit becomes 2.75 kWh per interval.
-
-With one-way efficiency eta = 0.95 and stored energy e_it:
-
-\[
-e_{i,t+1}=e_{it}+\eta c_{it}-d_{it}/\eta,
-\qquad g_{it}=l_{it}+c_{it}-d_{it}.
-\]
-
-The restrictions are
-
-\[
-0\leq c_{it}\leq P_i\Delta t,\quad
-0\leq d_{it}\leq\min(P_i\Delta t,l_{it}),\quad
-0\leq e_{it}\leq B_i.
-\]
-
-Each day starts at e_i0 = 0.5 B_i. There is no fixed terminal SOC; the final
-energy change is valued at that day's mean price p_ref. Prices pi_t are
-EUR/kWh. These conventions are preserved in Stage 0.
-
-The existing transformer constraint is **soft**:
-
-\[
-\sum_i g_{it}\leq 11\Delta t+o_t,\qquad o_t\geq0.
-\]
-
-Overload costs gamma o_t, with gamma = 0.5 EUR/kWh. The optimizer is allowed
-to overload if that is worth the penalty. Zero measured overload is therefore
-an outcome, not a hard feasibility guarantee. We will explicitly choose soft
-versus hard capacity explicitly; Section 8 makes that choice for Stage 1.
-
-## 2. The exact original objective
-
-The minimization objective (negative scored net benefit) is
-
-\[
-J(c,d,o)=\sum_{it}\left[
-\pi_t(c_{it}-d_{it})-p_{\rm ref}(\eta c_{it}-d_{it}/\eta)
-\right]+\gamma\sum_t o_t.
-\]
-
-The no-battery load cost is a constant and cancels when computing savings.
-Summing the p_ref term over time gives terminal energy minus initial energy.
-This is not the same as imposing a cyclic terminal state.
-
-## 3. Why the relaxed LP cycles
-
-The LP never imposes c_it d_it = 0. Consequently, both variables may be
-positive. This is a model relaxation, not an error in HiGHS.
-
-Consider an SOC-neutral loop:
-
-\[
-\Delta c=\delta,\qquad \Delta d=\eta^2\delta.
-\]
-
-Then Delta e = eta delta - eta^2 delta / eta = 0, but net import rises by
-(1 - eta^2) delta. The terminal valuation cancels. At a negative price,
-pi_t (1 - eta^2) delta < 0: wasting energy reduces the objective, provided
-there is enough capacity and the other bounds permit the loop. At zero
-price, the loop can be cost-neutral, so the LP can return a cycling solution
-among several optima. Binding constraints/overload penalties can prevent or
-reduce this incentive; negative price alone is not a sufficient condition
-for cycling in every interval.
-
-For eta = 0.95, charging 1 kWh and discharging 0.9025 kWh leaves SOC unchanged
-but consumes 0.0975 kWh. At -0.03 EUR/kWh this earns 0.002925 EUR before any
-incremental overload cost. It is economically attractive in the relaxed
-model but is not an allowed single-mode battery action in the simulator.
-
-## 4. Linear throughput penalty: benefit and limitation
-
-Add kappa sum_it(c_it+d_it) to J, where kappa is EUR per AC-side kWh of
-throughput. The same loop now costs
-
-\[
-\delta[\pi_t(1-\eta^2)+\kappa(1+\eta^2)].
-\]
-
-A small positive fee eliminates cost-neutral cycling but may not remove
-profitable negative-price cycling. For this model, a sufficient bound is
-
-\[
-\kappa>\max_t\max(0,-\pi_t)\frac{1-\eta^2}{1+\eta^2}.
-\]
-
-**Why sufficient here:** if c,d > 0, remove delta = min(c,d/eta^2) from c
-and eta^2 delta from d. All SOC values remain unchanged. Upper charging and
-discharging bounds remain satisfied; grid import decreases but stays
-nonnegative because d <= load still holds. Upper-only transformer constraints
-become easier. Keep overload slack unchanged, or decrease it. Under the
-strict bound above, the objective strictly improves. Thus an optimum cannot
-contain such a loop (up to solver tolerances).
-
-This proof is specific to these constraints. It does not automatically hold
-with lower import limits, must-take PV or other equalities on grid exchange.
-A sufficient penalty **changes the optimization problem**, including legitimate
-arbitrage. It does not necessarily reproduce the unpenalized physical optimum.
-
-## 5. Exact mode restriction: MILP
-
-For every household-step introduce z_it in {0,1}:
-
-\[
-0\leq c_{it}\leq(P_i\Delta t)z_{it},\qquad
-0\leq d_{it}\leq\min(P_i\Delta t,l_{it})(1-z_{it}).
-\]
-
-If z = 1, discharge is zero. If z = 0, charge is zero. Idling is feasible in
-either mode. These use the tight existing physical bounds, not an arbitrary
-large big-M. The remaining objective and constraints are unchanged.
-
-We solve this mixed-integer linear program with SciPy's HiGHS interface.
-The requested relative MIP gap is 1e-5 per day. The code raises on a solver
-failure or time limit, rather than labelling an unproven incumbent optimal.
-It also checks exclusivity at 1e-6 kWh tolerance. See the recorded max MIP
-gap for the numerical certification of each experiment.
-
-For the same minimization objective, J_LP <= J_MILP. Equivalently, the relaxed
-LP's maximum economic benefit is an upper bound on the exclusive model's
-benefit. The MILP still permits continuous power, whereas MARL uses five
-power levels, so it remains a stronger controller class than MARL.
-
-## 6. How the comparison is kept fair
-
-- Exactly the same 51 held-out days, seed 2025 and noisy H0 loads as the
-  repository's original test evaluation; loads sampled once before all solves.
-- Identical efficiency, batteries, soft overload penalty, initial SOC and
-  terminal valuation for every variant.
-- Original LP; small-fee LP (0.0001 EUR/kWh); sufficient-fee LP (bound + 1e-6);
-  and, optionally, exclusive MILP without a throughput fee.
-- Record original economic benefit separately from the optimized penalized
-  objective. Never compare a penalized cost directly with an unpenalized cost.
-- Count household-steps separately from clock steps. One interval may have
-  simultaneous operation in multiple households.
-- Tests cover real-data battery feasibility, objective accounting, a deliberately
-  adverse negative-price case, failure of a tiny fee, and success of the MILP.
-
-The default reproducible benchmark uses the three LPs. Add `--include-milp`
-to attempt the optional binary baseline; a time-limited run raises rather than
-reporting an unproven optimum. The default per-day time limit is 60 seconds. A 1e-9 requested MIP gap hit
-a time limit on an affected negative-price day; the reported binary benchmark
-uses the explicitly documented 1e-5 relative tolerance instead. This is a
-numerical optimality tolerance, not a proof of exact arithmetic optimality.
-
-`results/distributed/stage0/comparison.csv` and `comparison.json` contain
-actual run results. `.npz` files preserve full schedules. Figures are generated
-by `scripts/audit_stage0.py`, not hand-edited.
-
-## 7. Boundary before Stage 1
-
-The exclusive MILP is a physical reference. Standard LP strong duality and
-convex ADMM convergence guarantees do not transfer to its binary variables.
-For later convex distributed experiments we must choose a clearly labelled
-LP relaxation or a throughput-penalized LP, then compare it with the same
-centralized formulation. If retaining the soft transformer model, its overload
-slack also changes the dual price domain. Sections 8–13 implement and explain the hard-capacity, throughput-penalized choice.
-
-## Check your understanding
-
-1. Why does the 11 kW limit become 2.75 kWh per step?
-2. With eta=0.95, why can a loop consume electricity without changing SOC?
-3. Why is a tiny positive throughput fee insufficient at some negative prices?
-4. Why can a MILP have lower benefit than the relaxed LP without either solver
-   being wrong?
-5. Why must we distinguish a hard transformer limit from a penalty for exceeding it?
-
-## References
-
-- SciPy MILP API: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html
-- SciPy HiGHS LP API: https://docs.scipy.org/doc/scipy/reference/optimize.linprog-highs.html
-- Original model: `src/fairbattery/baselines.py` and `src/fairbattery/env.py`.
-
-The algebraic loop-removal proof above is a derivation for this repository's
-specific model, not a claim that every battery LP relaxation is exact.
-
-# Stages 1–4: completed convex distributed extension
-
-These sections remain an **AI-assisted derivation draft for author review**.
-The implementation does not make an unsupported claim of independent human
-authorship. Stage 0's historical experiments are retained above.
-
-## 8. A deliberate model choice: hard capacity
-
-For these stages only, remove overload slack and impose
-
-\[
-\sum_i g_i(x_i)\le K,\qquad K_t=P_{\rm transformer}\Delta t.
-\]
-
-Here x_i = (c_i,d_i,e_i), X_i is household i's local battery polytope,
-g_i(x_i)=l_i+c_i-d_i, and f_i(x_i)=a_i^T x_i is the original negative savings
-**plus the sufficient throughput fee**. Every day uses its own sufficient
-fee, computed from that day's minimum price. The shared cost vector is
-
-\[
-a_i=(\pi-p_{\rm ref}\eta+\kappa,
-      -\pi+p_{\rm ref}/\eta+\kappa,0).
-\]
-
-The centralized reference is
-
-\[
-P^*=\min_{x_i\in X_i}\sum_i f_i(x_i)
-\quad\text{subject to}\quad\sum_i g_i(x_i)\le K.
-\]
-
-All numerical comparisons within Stages 1–4 use **this same problem**. Their
-numbers are not interchangeable with the unpenalized soft-limit Stage 0 table.
-SciPy/HiGHS supplies a sparse central LP, independently checked against a
-CVXPY/Clarabel formulation on three dates. The battery states are explicit,
-so the sparse model has O(NT) nonzeros rather than cumulative O(NT²) rows.
-
-## 9. Lagrangian and dual decomposition
-
-For a minimization problem with an upper inequality, nonnegative multipliers
-add a congestion charge:
-
-\[
-L(x,\lambda)=\sum_i[f_i(x_i)+\lambda^T g_i(x_i)]-\lambda^TK,
-\qquad\lambda\ge0.
-\]
-
-Thus
-
-\[
-q(\lambda)=\sum_i\min_{x_i\in X_i}
-[f_i(x_i)+\lambda^Tg_i(x_i)]-\lambda^TK.
-\]
-
-The dual is **maximize** q over lambda >= 0. Each inner minimization is an LP.
-Household i knows only its own load, battery data and the price vector; its
-linear charging coefficient rises by lambda_t and discharging coefficient
-falls by lambda_t. The fixed term lambda^T l_i must be included when computing
-the dual value even though it does not affect the household's argmin.
-
-An upper supergradient of the concave q is
-
-\[
-s^k=\sum_i g_i(x_i^k)-K.
-\]
-
-The customary name is projected dual subgradient ascent:
-
-\[
-\lambda^{k+1}=[\lambda^k+\alpha_k s^k]_+.
-\]
-
-Overloaded intervals get more expensive; unused intervals get cheaper. Units
-are consistent: lambda is EUR/kWh and s is kWh per interval. The step-size
-parameter therefore has units corresponding to EUR/kWh², not a power price.
-
-**Strong duality:** the hard-capacity LP is feasible on the supplied scenarios
-(idle batteries already fit the transformer) and has a finite optimum, since
-local battery variables are bounded. Finite-dimensional LP strong duality
-therefore gives max q = P*. Strict Slater feasibility is not required for this
-LP theorem. This statement does **not** cover the binary MILP.
-
-For the old soft model, minimizing gamma o - lambda o over o >= 0 would
-instead require 0 <= lambda <= gamma. Using only projection onto lambda >= 0
-for that soft model would be a different, incorrect dual. We avoid mixing them.
-
-### 9.1 Why we average and recover primal schedules
-
-Local LP optima need not be unique. Near an equilibrium price, a tiny price
-change can switch an entire charging block. Consequently, the last primal
-iterate can oscillate and violate capacity while dual values are close to
-optimal. The implementation records those raw violations rather than hiding them.
-
-We use weighted averages
-
-\[
-\bar x^k=\frac{\sum_{j=1}^k\alpha_jx^j}{\sum_{j=1}^k\alpha_j}.
-\]
-
-Convexity preserves all local constraints under averaging. A second average
-uses only the latter half of the requested iteration budget, reducing initial
-transients. Standard diminishing-step convergence assumptions hold for the
-chosen alpha_k = a/(N k^0.6): sum alpha_k diverges and sum alpha_k² converges.
-A constant-step comparator is included; it need not converge to exact optimality.
-The optional Polyak rule uses the best **measured feasible** upper bound, not
-the central optimum. It is an empirical option, not asserted to have the same
-guarantee as the diminishing schedule.
-
-Averaging alone need not give finite-iteration hard feasibility. First remove
-SOC-neutral charging loops locally using Stage 0's proof. Then blend with the
-idle schedule x^0. Let b=sum_i l_i and y=sum_i g_i(bar x_i). Set
-
-\[
-\beta=\min\left(1,\min_{t:y_t>b_t}\frac{K_t-b_t}{y_t-b_t}\right),\qquad
-\hat x_i=x_i^0+\beta(\bar x_i-x_i^0).
-\]
-
-For idle-feasible instances this is a feasible convex combination. The
-coordinator broadcasts just beta; every household applies it locally. No
-central optimizer or centralized optimum is used for recovery. The code
-explicitly rejects idle-infeasible recovery instead of silently applying it.
-This restriction is a limitation of the current implementation, not of duality.
-
-The best recovered feasible cost P_best is a primal upper bound. The best
-q(lambda) is a dual lower bound. Their difference is a numerical optimality
-certificate. Stop when it is at most N*tol EUR. Reference objective values are
-used only for plots and error reporting, never to choose household actions.
-
-## 10. Sharing ADMM (Boyd et al., Section 7.3)
-
-Introduce a vector z_i of allocated grid energy for each household. With
-C = {z: sum_i z_i <= K}, solve
-
-\[
-\min_{x_i\in X_i,z}\sum_i f_i(x_i)+I_C(z)
-\quad\text{subject to}\quad g_i(x_i)-z_i=0.
-\]
-
-This is a **two-block** problem: all x_i collectively form one separable
-block, and all z_i form the other. It is not an unqualified multi-block ADMM.
-The scaled augmented Lagrangian gives
-
-\[
-x_i^{k+1}=\arg\min_{x_i\in X_i}
- f_i(x_i)+\frac\rho2\|g_i(x_i)-z_i^k+u_i^k\|_2^2.
-\]
-
-This is a local convex QP, solved with a persistent, warm-started OSQP model.
-Only its local data, previous allocation and multiplier are needed.
-
-For v_i = g_i(x_i^{k+1}) + u_i^k, the z update is Euclidean projection onto C:
-
-\[
-\delta_t=\left[\frac{\sum_i v_{it}-K_t}{N}\right]_+,
-\qquad z_i^{k+1}=v_i-\delta.
-\]
-
-Derivation: at a violated interval the projection subtracts the same scalar
-from every component; requiring the corrected sum to equal K determines that
-scalar. Otherwise the projection is the identity. We do not separately impose
-z_i >= 0: auxiliary allocations can be negative during iteration; physical
-grid imports remain nonnegative because household constraints ensure that.
-At convergence z_i = g_i and the physical interpretation is restored.
-
-Finally,
-
-\[
-u_i^{k+1}=u_i^k+g_i(x_i^{k+1})-z_i^{k+1}=\delta.
-\]
-
-All scaled multipliers are identical after this step. The coordinator needs
-only aggregate imports and broadcasts a single vector delta. Households can
-reconstruct their own z_i and u_i; no household receives another's battery
-model or raw load profile. This is message-based separation, **not a formal
-privacy guarantee**: schedules can reveal information about loads.
-
-### 10.1 Correct residuals and stopping
-
-Let G=[I,-I,0], A=blockdiag(G), B=-I. With the loads absorbed into the equality
-constant, the primal residual is r_i = g_i - z_i. The dual residual is
-
-\[
-s_i=\rho G^T(z_i^{k+1}-z_i^k)
-   =\rho(\Delta z_i,-\Delta z_i,0),
-\]
-
-up to a sign that does not affect its norm. Reporting only rho||Delta z||
-would omit the G^T factor. The implementation reports both full Euclidean
-norms and RMS values, dividing by sqrt(NT) and sqrt(3NT), respectively.
-The stopping rule uses absolute RMS tolerances. These alone do not certify a
-specified objective gap, so comparison to the independent central reference
-is reported separately. Final schedules are locally purified and recovered
-with the same idle blend before being called feasible.
-
-The objective functions are closed proper convex, the split constraints are
-affine and the supplied feasible LP admits a saddle point. Standard two-block
-ADMM theory applies with exact subproblem solves. In practice local QPs are
-solved to finite tolerance, so numerical feasibility/objective checks are
-also required. Unique battery schedules are not assumed. Tests compare
-objective values and feasibility rather than demanding identical arrays.
-
-## 11. Proportional and lexicographic max-min fairness
-
-Define daily saving S_i = -f_i(x_i), relative to an idle battery. This includes
-the modelling throughput charge and the terminal energy adjustment. Define
-q_i = S_i/B_i in EUR per kWh of installed battery. All fair reference models
-impose S_i >= 0 (individual rationality); no negative saving is clipped away.
-
-- Efficient reference: maximize sum_i S_i.
-- Proportional fairness: maximize sum_i log(q_i), requiring q_i > 0.
-- Max-min fairness: lexicographically maximize the ascending sorted vector q.
-
-Proportional fairness is optimized over battery schedules, hence allocates
-scarce transformer capacity over time through those schedules. It is not a
-static equal-kW quota. Its first-order characterization is
-sum_i (q_i-q_i*)/q_i* <= 0 for all feasible positive q.
-Since log(S_i/B_i)=log(S_i)-log(B_i), this unweighted proportional objective
-has the **same optimizer** as sum log(S_i). Normalizing the reported savings
-does not change that fact. Jain's index of q or the smallest q need not improve
-under proportional fairness. The experiments report the actual outcome.
-
-Before solving log fairness, a max-min LP checks that strictly positive
-savings for all households are achievable. If not, the code raises; it does
-not add an undocumented epsilon to the log. Log arguments are divided by a
-fixed positive scale for numerical conditioning, which adds only a constant
-to the objective.
-
-Max-min is implemented by progressive freezing: maximize a common floor over
-the active households, identify those unable to improve on that optimal face,
-fix their achieved level (within a documented numerical tolerance), and
-repeat over the remaining households. A final efficiency tie-break chooses
-a schedule. This is stronger than merely maximizing one scalar minimum and
-leaving all other outcomes arbitrary. Freezing tolerance is 2e-7 EUR/kWh;
-bottleneck identification uses ten times that tolerance.
-
-Fairness outputs:
-
-\[
-J(q)=\frac{(\sum_i q_i)^2}{N\sum_iq_i^2},\quad
-q_{\min}=\min_iq_i,\quad
-\mathrm{PoF}=\frac{\sum_iS_i^{\rm efficient}-\sum_iS_i^{\rm fair}}
-{\sum_iS_i^{\rm efficient}}.
-\]
-
-Jain's index is undefined for an all-zero vector. Price of fairness is
-undefined if the efficient benefit is nonpositive. The implementation returns
-null in these cases and rejects material negative savings, rather than
-manufacturing a favorable metric by clipping.
-
-A distributed proportional-fair variant uses exactly the sharing projection
-above, replacing the local linear cost with -log(S_i/B_i). Each household
-solves its own convex log-plus-quadratic subproblem. Max-min remains a
-**centralized lexicographic reference**; no distributed max-min convergence
-claim is made.
-
-## 12. Scaling and communication accounting
-
-Use the same processed BDEW H0 profile and lognormal load-noise mechanism as
-the original repository. Six homes use the original parameters. For N=100
-and 1000, a fixed generator samples annual usage from the original six levels
-and battery sizes from {5,7.5,10} kWh. Load noise uses seed 2025; parameter
-sampling uses seed 2042. Every run retains 96 quarter-hour intervals.
-
-Capacity scales as 11*N/6 kW. Keeping 11 kW while increasing household count
-100-fold would primarily test infeasibility, not algorithmic scaling.
-The scaling date is fixed; separate six-household experiments cover three
-2025 dates, including negative prices. No runtime is extrapolated.
-
-Reported runtime is **wall-clock serial simulation** including local oracle
-construction, not actual parallel-network runtime. Each iteration conceptually
-uses two messages per agent: an uplink containing its T-element grid schedule
-and a cost scalar, and a downlink containing a T-element price/projection
-vector plus scalar recovery/bookkeeping information. The accounting convention
-budgets 2T+3 scalar values and 2 messages per agent per iteration. Hence total
-network message count is 2*N*k. This does not measure packetization, latency,
-secure aggregation or traffic of a deployed system.
-
-An iteration limit is not convergence. Every output records `converged`,
-iteration count, measured runtime, objective gap and feasibility separately.
-Tests and plots keep those distinctions visible.
-
-## 13. References and reproducibility
-
-- Boyd et al. (2011), *Distributed Optimization and Statistical Learning via
-  the Alternating Direction Method of Multipliers*, Sections 2.2, 3 and 7.3:
-  https://web.stanford.edu/~boyd/papers/pdf/admm_distr_stats.pdf
-- CVXPY DCP rules: https://www.cvxpy.org/tutorial/dcp/
-- HiGHS Python API: https://ergo-code.github.io/HiGHS/stable/interfaces/python/example-py/
-- OSQP Python API: https://osqp.org/docs/interfaces/python.html
-
-Run `python scripts/reproduce_distributed.py` for all experiments and figures.
-Alternatively run `python scripts/distributed_experiments.py`,
-`python scripts/fair_distributed_experiment.py` and `python scripts/plot_distributed.py`. The experiment script stores CSV histories,
-summary JSON and software/data provenance. Stage 0 remains reproducible with
-`python scripts/audit_stage0.py --include-milp`. Run `python -m pytest -q` for
-all available tests. A full reproduction entry point is documented in README.
-
-Limitations: idealized shared-transformer energy balance; no voltage/reactive
-power/network losses; synthetic household loads; perfect day-ahead information;
-daily reset and terminal valuation; a modelling rather than calibrated wear
-fee; finite solver tolerances; an idle-feasible recovery requirement; central
-max-min reference; and serial rather than deployed distributed timing.
+- Solver documentation: [SciPy `milp`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.milp.html), [HiGHS](https://ergo-code.github.io/HiGHS/stable/interfaces/python/example-py/), [OSQP](https://osqp.org/docs/interfaces/python.html), [CVXPY](https://www.cvxpy.org/tutorial/dcp/).

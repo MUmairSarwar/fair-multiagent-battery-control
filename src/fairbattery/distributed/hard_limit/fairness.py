@@ -1,7 +1,8 @@
-"""Fair daily SAVINGS allocations through the shared transformer schedule.
+"""Efficient, proportional and max-min fair schedules under the hard limit.
 
-Savings include the throughput charge and terminal valuation. Fairness is on
-s_i / battery_kWh, relative to an idle battery. No negative values are clipped.
+Fairness is measured on each household's daily saving per kWh of battery,
+relative to an idle battery, including the throughput fee and the end-of-day
+valuation. Negative savings are rejected, not clipped.
 """
 import numpy as np
 import cvxpy as cp
@@ -11,7 +12,7 @@ from .model import cvxpy_model
 def solve_fair(problem,kind='proportional',lex_tol=2e-7):
     c,d,e,costs,cons=cvxpy_model(problem)
     normalized=cp.multiply(1/problem.capacities,-costs)
-    # Individual rationality: no household is forced to lose versus idle.
+    # No household may end up worse off than with an idle battery.
     cons=list(cons)+[normalized>=0]
     solve_options=dict(solver='CLARABEL',tol_gap_abs=1e-7,tol_feas=1e-8,tol_gap_rel=1e-7,max_iter=300,max_step_fraction=.9)
     def solve(objective,extra=()):
@@ -21,7 +22,7 @@ def solve_fair(problem,kind='proportional',lex_tol=2e-7):
     if kind=='efficient':
         solve(cp.Minimize(cp.sum(costs)))
     elif kind=='proportional':
-        # Check strict positivity is possible rather than adding an arbitrary log offset.
+        # The log needs every saving > 0: check that this is achievable instead of adding an offset.
         floor=cp.Variable()
         achievable=solve(cp.Maximize(floor),[normalized>=floor])
         if achievable<=1e-8:
@@ -33,7 +34,7 @@ def solve_fair(problem,kind='proportional',lex_tol=2e-7):
             floor=cp.Variable()
             level=solve(cp.Maximize(floor),frozen+[normalized[active]>=floor])
             face=frozen+[normalized[active]>=level-lex_tol]
-            # Freeze only households that cannot improve on the optimal face.
+            # Freeze the households that cannot rise above the current floor.
             blocked=[]
             for i in active:
                 attainable=solve(cp.Maximize(normalized[i]),face)
@@ -43,18 +44,18 @@ def solve_fair(problem,kind='proportional',lex_tol=2e-7):
             frozen += [normalized[blocked]>=level-lex_tol,
                        normalized[blocked]<=level+lex_tol]
             active=[i for i in active if i not in blocked]
-        # Pick an efficient schedule among equivalent lexicographically fair outcomes.
+        # Among the lexicographically fair schedules, take the most efficient one.
         solve(cp.Minimize(cp.sum(costs)),frozen)
     else:raise ValueError(kind)
     x=np.hstack([c.value,d.value,e.value])
-    # Do not purify max-min outputs: doing so could change frozen outcomes by tolerance.
+    # No cleaning step here: it could move the frozen max-min levels.
     return x,metrics(problem,x)
 
 
 def metrics(problem,x,efficient_benefit=None):
     savings=-problem.costs(x);q=savings/problem.capacities
     if q.min() < -1e-6:raise ValueError('Negative savings: Jain index not reported by clipping')
-    # Tiny solver roundoff alone is permitted; zero-savings index is undefined.
+    # Allow solver round-off; Jain's index is undefined when every saving is zero.
     jain=float(q.sum()**2/(len(q)*(q@q))) if q@q>1e-20 else None
     total=float(savings.sum())
     return dict(total_saving_eur=total,saving_per_kwh=q.tolist(),jain=jain,
@@ -65,11 +66,11 @@ def metrics(problem,x,efficient_benefit=None):
 
 
 def distributed_proportional(p,rho=10.,max_iter=1000,tol=1e-5):
-    """Sharing ADMM with local log-savings utility; coordinator projects imports.
+    """Proportional fairness with sharing ADMM.
 
-    Max-min uses the centralized lexicographic reference, explicitly not claimed
-    to be a distributed implementation. This function supplies a genuinely
-    distributed fairness algorithm in addition to the efficient LP methods.
+    Each household maximises the log of its own saving plus the ADMM penalty;
+    the coordinator step is the same projection as in ``sharing_admm``.
+    Max-min fairness has no distributed version; see ``solve_fair``.
     """
     from time import perf_counter
     from .local import HouseholdLogQP
